@@ -1,0 +1,16 @@
+.classpath
+.settings/
+.loadpath
+
+bin/**
+tmp/**
+tmp/**/*
+*.tmp
+*.bak
+
+*.class
+
+# Package Files #
+*.jar
+*.war
+*.ear
