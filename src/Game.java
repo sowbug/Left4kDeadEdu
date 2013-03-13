@@ -40,6 +40,16 @@ public class Game extends Frame {
   private boolean gameStarted;
   private Graphics sg;
 
+  private static final int MDO_X = 0;
+  private static final int MDO_Y = 1;
+  private static final int MDO_UNKNOWN_2 = 2;
+  private static final int MDO_UNKNOWN_3 = 3;
+  private static final int MDO_UNKNOWN_8 = 8;
+  private static final int MDO_UNKNOWN_9 = 9;
+  private static final int MDO_UNKNOWN_10 = 10;
+  private static final int MDO_UNKNOWN_11 = 11;
+  private static final int MDO_UNKNOWN_15 = 15;
+
   public static void main(String[] args) {
     Game game = new Game();
     game.setSize(480, 480);
@@ -84,7 +94,8 @@ public class Game extends Frame {
   public void run() {
     generateSprites();
 
-    doGame();
+    while (true)
+      doGame();
   }
 
   private void doGame() {
@@ -145,8 +156,8 @@ public class Game extends Frame {
           double cos = Math.cos(-shootDir);
           double sin = Math.sin(-shootDir);
 
-          int xCam = monsterData[0];
-          int yCam = monsterData[1];
+          int xCam = monsterData[MDO_X];
+          int yCam = monsterData[MDO_Y];
 
           generateLightmap(tick, lightmap, brightness, playerDir, xCam, yCam);
           drawMapView(xCam, yCam);
@@ -286,9 +297,9 @@ public class Game extends Frame {
       int closestHit = 0;
 
       nextMonster: for (int m = 0; m < 256 + 16; m++) {
-        int xPos = monsterData[m * 16 + 0];
-        int yPos = monsterData[m * 16 + 1];
-        if (monsterData[m * 16 + 11] == 0) {
+        int xPos = monsterData[m * 16 + MDO_X];
+        int yPos = monsterData[m * 16 + MDO_Y];
+        if (monsterData[m * 16 + MDO_UNKNOWN_11] == 0) {
           xPos = (random.nextInt(62) + 1) * 16 + 8;
           yPos = (random.nextInt(62) + 1) * 16 + 8;
 
@@ -302,14 +313,14 @@ public class Game extends Frame {
 
           if (maps[xPos + yPos * 1024] < 0xfffffe
               && (m <= 128 || rushTime > 0 || (m > 255 && tick == 1))) {
-            monsterData[m * 16 + 0] = xPos;
-            monsterData[m * 16 + 1] = yPos;
-            monsterData[m * 16 + 15] = maps[xPos + yPos * 1024];
+            monsterData[m * 16 + MDO_X] = xPos;
+            monsterData[m * 16 + MDO_Y] = yPos;
+            monsterData[m * 16 + MDO_UNKNOWN_15] = maps[xPos + yPos * 1024];
             maps[xPos + yPos * 1024] = 0xfffffe;
-            monsterData[m * 16 + 9] = (rushTime > 0 || random.nextInt(3) == 0) ? 127
-                : 0;
-            monsterData[m * 16 + 11] = 1;
-            monsterData[m * 16 + 2] = m & 15;
+            monsterData[m * 16 + MDO_UNKNOWN_9] = (rushTime > 0 || random
+                .nextInt(3) == 0) ? 127 : 0;
+            monsterData[m * 16 + MDO_UNKNOWN_11] = 1;
+            monsterData[m * 16 + MDO_UNKNOWN_2] = m & 15;
           } else {
             continue;
           }
@@ -319,8 +330,8 @@ public class Game extends Frame {
 
           if (m >= 255) {
             if (xd * xd + yd * yd < 8 * 8) {
-              maps[xPos + yPos * 1024] = monsterData[m * 16 + 15];
-              monsterData[m * 16 + 11] = 0;
+              maps[xPos + yPos * 1024] = monsterData[m * 16 + MDO_UNKNOWN_15];
+              monsterData[m * 16 + MDO_UNKNOWN_11] = 0;
               bonusTime = 120;
               if ((m & 1) == 0) {
                 damage = 20;
@@ -330,21 +341,21 @@ public class Game extends Frame {
               continue;
             }
           } else if (xd * xd + yd * yd > 340 * 340) {
-            maps[xPos + yPos * 1024] = monsterData[m * 16 + 15];
-            monsterData[m * 16 + 11] = 0;
+            maps[xPos + yPos * 1024] = monsterData[m * 16 + MDO_UNKNOWN_15];
+            monsterData[m * 16 + MDO_UNKNOWN_11] = 0;
             continue;
           }
         }
 
         int xm = xPos - xCam + 120;
-        int ym = monsterData[m * 16 + 1] - yCam + 120;
+        int ym = monsterData[m * 16 + MDO_Y] - yCam + 120;
 
-        int d = monsterData[m * 16 + 2];
+        int d = monsterData[m * 16 + MDO_UNKNOWN_2];
         if (m == 0) {
           d = (((int) (playerDir / (Math.PI * 2) * 16 + 4.5 + 16)) & 15);
         }
 
-        d += ((monsterData[m * 16 + 3] / 4) & 3) * 16;
+        d += ((monsterData[m * 16 + MDO_UNKNOWN_3] / 4) & 3) * 16;
 
         int p = (0 * 16 + d) * 144;
         if (m > 0) {
@@ -366,19 +377,19 @@ public class Game extends Frame {
         boolean moved = false;
 
         if (monsterData[m * 16 + 10] > 0) {
-          monsterData[m * 16 + 11] += random.nextInt(3) + 1;
-          monsterData[m * 16 + 10] = 0;
+          monsterData[m * 16 + MDO_UNKNOWN_11] += random.nextInt(3) + 1;
+          monsterData[m * 16 + MDO_UNKNOWN_10] = 0;
 
           double rot = 0.25;
           int amount = 8;
           double poww = 32;
 
-          if (monsterData[m * 16 + 11] >= 2 + level) {
+          if (monsterData[m * 16 + MDO_UNKNOWN_11] >= 2 + level) {
             rot = Math.PI * 2;
             amount = 60;
             poww = 16;
             maps[(xPos) + (yPos) * 1024] = 0xa00000;
-            monsterData[m * 16 + 11] = 0;
+            monsterData[m * 16 + MDO_UNKNOWN_11] = 0;
             score += level;
           }
           for (int i = 0; i < amount; i++) {
@@ -420,7 +431,7 @@ public class Game extends Frame {
           }
           if (rx > -32 && rx < 220 && ry > -32 && ry < 32
               && random.nextInt(10) == 0) {
-            monsterData[m * 16 + 9]++;
+            monsterData[m * 16 + MDO_UNKNOWN_9]++;
           }
           if (rx > 0 && rx < closestHitDist && ry > -8 && ry < 8) {
             closestHitDist = (int) (rx);
@@ -430,8 +441,8 @@ public class Game extends Frame {
           dirLoop: for (int i = 0; i < 2; i++) {
             int xa = 0;
             int ya = 0;
-            xPos = monsterData[m * 16 + 0];
-            yPos = monsterData[m * 16 + 1];
+            xPos = monsterData[m * 16 + MDO_X];
+            yPos = monsterData[m * 16 + MDO_Y];
 
             if (m == 0) {
               if (k[KeyEvent.VK_A])
@@ -443,14 +454,14 @@ public class Game extends Frame {
               if (k[KeyEvent.VK_S])
                 ya++;
             } else {
-              if (monsterData[m * 16 + 9] < 8)
+              if (monsterData[m * 16 + MDO_UNKNOWN_9] < 8)
                 continue nextMonster;
 
-              if (monsterData[m * 16 + 8] != 12) {
-                xPlayerDist = (monsterData[m * 16 + 8]) % 5 - 2;
-                yPlayerDist = (monsterData[m * 16 + 8]) / 5 - 2;
+              if (monsterData[m * 16 + MDO_UNKNOWN_8] != 12) {
+                xPlayerDist = (monsterData[m * 16 + MDO_UNKNOWN_8]) % 5 - 2;
+                yPlayerDist = (monsterData[m * 16 + MDO_UNKNOWN_8]) / 5 - 2;
                 if (random.nextInt(10) == 0) {
-                  monsterData[m * 16 + 8] = 12;
+                  monsterData[m * 16 + MDO_UNKNOWN_8] = 12;
                 }
               }
 
@@ -471,31 +482,33 @@ public class Game extends Frame {
 
               moved = true;
               double dir = Math.atan2(yPlayerDist, xPlayerDist);
-              monsterData[m * 16 + 2] = (((int) (dir / (Math.PI * 2) * 16 + 4.5 + 16)) & 15);
+              monsterData[m * 16 + MDO_UNKNOWN_2] = (((int) (dir
+                  / (Math.PI * 2) * 16 + 4.5 + 16)) & 15);
             }
 
             ya *= i;
             xa *= 1 - i;
 
             if (xa != 0 || ya != 0) {
-              maps[xPos + yPos * 1024] = monsterData[m * 16 + 15];
+              maps[xPos + yPos * 1024] = monsterData[m * 16 + MDO_UNKNOWN_15];
               for (int xx = xPos + xa - 3; xx <= xPos + xa + 3; xx++)
                 for (int yy = yPos + ya - 3; yy <= yPos + ya + 3; yy++)
                   if (maps[xx + yy * 1024] >= 0xfffffe) {
                     maps[xPos + yPos * 1024] = 0xfffffe;
-                    monsterData[m * 16 + 8] = random.nextInt(25);
+                    monsterData[m * 16 + MDO_UNKNOWN_8] = random.nextInt(25);
                     continue dirLoop;
                   }
 
               moved = true;
-              monsterData[m * 16 + 0] += xa;
-              monsterData[m * 16 + 1] += ya;
-              monsterData[m * 16 + 15] = maps[(xPos + xa) + (yPos + ya) * 1024];
+              monsterData[m * 16 + MDO_X] += xa;
+              monsterData[m * 16 + MDO_Y] += ya;
+              monsterData[m * 16 + MDO_UNKNOWN_15] = maps[(xPos + xa)
+                  + (yPos + ya) * 1024];
               maps[(xPos + xa) + (yPos + ya) * 1024] = 0xfffffe;
             }
           }
           if (moved) {
-            monsterData[m * 16 + 3]++;
+            monsterData[m * 16 + MDO_UNKNOWN_3]++;
           }
         }
       }
@@ -509,8 +522,8 @@ public class Game extends Frame {
           ammo += 4;
         }
         if (closestHit > 0) {
-          monsterData[closestHit * 16 + 10] = 1;
-          monsterData[closestHit * 16 + 9] = 127;
+          monsterData[closestHit * 16 + MDO_UNKNOWN_10] = 1;
+          monsterData[closestHit * 16 + MDO_UNKNOWN_9] = 127;
         }
         int glow = 0;
         for (int j = closestHitDist; j >= 0; j--) {
@@ -618,6 +631,8 @@ public class Game extends Frame {
 
     int[] monsterData = new int[320 * 16];
     {
+      // Draw the floor of the level with an uneven green color.
+      // Put a wall around the perimeter.
       int i = 0;
       for (int y = 0; y < 1024; y++)
         for (int x = 0; x < 1024; x++) {
