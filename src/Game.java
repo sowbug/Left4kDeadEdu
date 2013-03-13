@@ -15,9 +15,14 @@ import java.awt.image.DataBufferInt;
 import java.util.Random;
 
 public class Game extends Frame {
+  private static final int PIXEL_ZOMBIE_SKIN = 0xa0ff90;
+  private static final int PIXEL_SKIN = 0xFF9993;
+  private static final int PIXEL_SPECIAL = 0xff0000;
+  private static final int PIXEL_NORMAL_WALL = 0xFF8052;
+  private static final int PIXEL_OUTER_WALL = 0xFFFEFE;
   private static final long serialVersionUID = 2099860140043826270L;
   private boolean[] k = new boolean[32767];
-  private int m;
+  private int mouseEvent;
   private BufferedImage image;
   private Graphics ogr;
   private Random random;
@@ -107,8 +112,10 @@ public class Game extends Frame {
     xWin1 = 0;
     yWin1 = 0;
 
-    while (true)
+    while (true) {
+      System.out.println("Playing full game...");
       playFullGame();
+    }
   }
 
   private void playFullGame() {
@@ -120,14 +127,14 @@ public class Game extends Frame {
     ammo = 20;
     clips = 20;
 
-    while (true)
-      playOneLevel();
+    playLevels();
   }
 
-  private void playOneLevel() {
+  private void playLevels() {
     while (true) {
       int tick = 0;
       level++;
+      System.out.println("Playing level " + level + "...");
       int[] monsterData = generateLevel();
 
       long lastTime = System.nanoTime();
@@ -148,7 +155,7 @@ public class Game extends Frame {
             rushTime = -random.nextInt(2000);
           }
           // Move player:
-          int mouse = m;
+          int mouse = mouseEvent;
           playerDir = Math.atan2(mouse / 240 - 120, mouse % 240 - 120);
 
           double shootDir = playerDir
@@ -639,7 +646,7 @@ public class Game extends Frame {
           int br = random.nextInt(32) + 112;
           maps[i] = (br / 3) << 16 | (br) << 8;
           if (x < 4 || y < 4 || x >= 1020 || y >= 1020) {
-            maps[i] = 0xFFFEFE;
+            maps[i] = PIXEL_OUTER_WALL;
           }
           i++;
         }
@@ -659,10 +666,10 @@ public class Game extends Frame {
         ym *= 16;
 
         if (i == 68) {
-          monsterData[0] = xm + w / 2;
-          monsterData[1] = ym + h / 2;
-          monsterData[15] = 0x808080;
-          monsterData[11] = 1;
+          monsterData[MDO_X] = xm + w / 2;
+          monsterData[MDO_Y] = ym + h / 2;
+          monsterData[MDO_UNKNOWN_15] = 0x808080;
+          monsterData[MDO_UNKNOWN_11] = 1;
         }
 
         xWin0 = xm + 5;
@@ -679,17 +686,21 @@ public class Game extends Frame {
             if (ym + h - y - 1 < d)
               d = ym + h - y - 1;
 
-            maps[x + y * 1024] = 0xFF8052;
+            maps[x + y * 1024] = PIXEL_NORMAL_WALL;
             if (d > 4) {
               int br = random.nextInt(16) + 112;
+
+              // Floor diagonal
               if (((x + y) & 3) == 0) {
                 br += 16;
               }
+
+              // Grayish concrete floor
               maps[x + y * 1024] = (br * 3 / 3) << 16 | (br * 4 / 4) << 8
                   | (br * 4 / 4);
             }
             if (i == 69) {
-              maps[x + y * 1024] &= 0xff0000;
+              maps[x + y * 1024] &= PIXEL_SPECIAL;
             }
           }
 
@@ -733,11 +744,11 @@ public class Game extends Frame {
   private void generateSprites() {
     int pix = 0;
     for (int i = 0; i < 18; i++) {
-      int skin = 0xFF9993;
+      int skin = PIXEL_SKIN;
       int clothes = 0xFFffff;
 
       if (i > 0) {
-        skin = 0xa0ff90;
+        skin = PIXEL_ZOMBIE_SKIN;
         clothes = (random.nextInt(0x1000000) & 0x7f7f7f);
       }
       for (int t = 0; t < 4; t++) {
@@ -807,7 +818,8 @@ public class Game extends Frame {
       k[((MouseEvent) e).getButton()] = down;
     case MouseEvent.MOUSE_MOVED:
     case MouseEvent.MOUSE_DRAGGED:
-      m = ((MouseEvent) e).getX() / 2 + ((MouseEvent) e).getY() / 2 * 240;
+      mouseEvent = ((MouseEvent) e).getX() / 2 + ((MouseEvent) e).getY() / 2
+          * 240;
     }
   }
 }
