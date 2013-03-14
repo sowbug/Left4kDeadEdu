@@ -15,9 +15,10 @@ import java.awt.image.DataBufferInt;
 import java.util.Random;
 
 public class Game extends Frame {
+  private static final int ROOM_COUNT = 70;
   private static final int PIXEL_ZOMBIE_SKIN = 0xa0ff90;
   private static final int PIXEL_SKIN = 0xFF9993;
-  private static final int PIXEL_SPECIAL = 0xff0000;
+  private static final int PIXEL_MASK_SPECIAL = 0xff0000;
   private static final int PIXEL_NORMAL_WALL = 0xFF8052;
   private static final int PIXEL_OUTER_WALL = 0xFFFEFE;
   private static final long serialVersionUID = 2099860140043826270L;
@@ -135,7 +136,8 @@ public class Game extends Frame {
       int tick = 0;
       level++;
       System.out.println("Playing level " + level + "...");
-      int[] monsterData = generateLevel();
+      int[] monsterData = new int[320 * 16];
+      generateLevel(monsterData);
 
       long lastTime = System.nanoTime();
 
@@ -632,113 +634,137 @@ public class Game extends Frame {
     return brightness;
   }
 
-  private int[] generateLevel() {
+  private void generateLevel(int[] monsterData) {
     maps = new int[1024 * 1024];
+
+    // Make the levels random but repeatable.
     random = new Random(4329 + level);
 
-    int[] monsterData = new int[320 * 16];
-    {
-      // Draw the floor of the level with an uneven green color.
-      // Put a wall around the perimeter.
-      int i = 0;
-      for (int y = 0; y < 1024; y++)
-        for (int x = 0; x < 1024; x++) {
-          int br = random.nextInt(32) + 112;
-          maps[i] = (br / 3) << 16 | (br) << 8;
-          if (x < 4 || y < 4 || x >= 1020 || y >= 1020) {
-            maps[i] = PIXEL_OUTER_WALL;
-          }
-          i++;
+    // Draw the floor of the level with an uneven green color.
+    // Put a wall around the perimeter.
+    int i = 0;
+    for (int y = 0; y < 1024; y++) {
+      for (int x = 0; x < 1024; x++) {
+        int br = random.nextInt(32) + 112;
+        maps[i] = (br / 3) << 16 | (br) << 8;
+        if (x < 4 || y < 4 || x >= 1020 || y >= 1020) {
+          maps[i] = PIXEL_OUTER_WALL;
         }
+        i++;
+      }
+    }
 
-      for (i = 0; i < 70; i++) {
-        int w = random.nextInt(8) + 2;
-        int h = random.nextInt(8) + 2;
-        int xm = random.nextInt(64 - w - 2) + 1;
-        int ym = random.nextInt(64 - h - 2) + 1;
+    // Create 70 rooms. Put the player in the 69th, and make the 70th red.
+    for (i = 0; i < ROOM_COUNT; i++) {
+      // Create a room that's possibly as big as the level, whose coordinates
+      // are clamped to the nearest multiple of 16.
+      int w = random.nextInt(8) + 2;
+      int h = random.nextInt(8) + 2;
+      int xm = random.nextInt(64 - w - 2) + 1;
+      int ym = random.nextInt(64 - h - 2) + 1;
 
-        w *= 16;
-        h *= 16;
+      w *= 16;
+      h *= 16;
 
-        w += 5;
-        h += 5;
-        xm *= 16;
-        ym *= 16;
+      w += 5;
+      h += 5;
+      xm *= 16;
+      ym *= 16;
 
-        if (i == 68) {
-          monsterData[MDO_X] = xm + w / 2;
-          monsterData[MDO_Y] = ym + h / 2;
-          monsterData[MDO_UNKNOWN_15] = 0x808080;
-          monsterData[MDO_UNKNOWN_11] = 1;
-        }
+      // Place the player (monsterData[0-15]) in the center of the
+      // second-to-last room.
+      if (i == ROOM_COUNT - 2) {
+        monsterData[MDO_X] = xm + w / 2;
+        monsterData[MDO_Y] = ym + h / 2;
+        monsterData[MDO_UNKNOWN_15] = 0x808080;
+        monsterData[MDO_UNKNOWN_11] = 1;
+      }
 
-        xWin0 = xm + 5;
-        yWin0 = ym + 5;
-        xWin1 = xm + w - 5;
-        yWin1 = ym + h - 5;
-        for (int y = ym; y < ym + h; y++)
-          for (int x = xm; x < xm + w; x++) {
-            int d = x - xm;
-            if (xm + w - x - 1 < d)
-              d = xm + w - x - 1;
-            if (y - ym < d)
-              d = y - ym;
-            if (ym + h - y - 1 < d)
-              d = ym + h - y - 1;
+      // Create a window around the current room coordinates. Why is the first
+      // one a width and the second a position?
+      xWin0 = xm + 5;
+      yWin0 = ym + 5;
+      xWin1 = xm + w - 5;
+      yWin1 = ym + h - 5;
 
-            maps[x + y * 1024] = PIXEL_NORMAL_WALL;
-            if (d > 4) {
-              int br = random.nextInt(16) + 112;
+      for (int y = ym; y < ym + h; y++) {
+        for (int x = xm; x < xm + w; x++) {
 
-              // Floor diagonal
-              if (((x + y) & 3) == 0) {
-                br += 16;
-              }
+          // This seems to calculate the thickness of the wall.
+          int d = x - xm;
+          if (xm + w - x - 1 < d)
+            d = xm + w - x - 1;
+          if (y - ym < d)
+            d = y - ym;
+          if (ym + h - y - 1 < d)
+            d = ym + h - y - 1;
 
-              // Grayish concrete floor
-              maps[x + y * 1024] = (br * 3 / 3) << 16 | (br * 4 / 4) << 8
-                  | (br * 4 / 4);
+          // Are we inside the wall, and thus in the room?
+          if (d > 4) {
+            // Yes, we are. Draw the floor.
+
+            // Vary the color of the floor.
+            int br = random.nextInt(16) + 112;
+
+            // Floor diagonal
+            if (((x + y) & 3) == 0) {
+              br += 16;
             }
-            if (i == 69) {
-              maps[x + y * 1024] &= PIXEL_SPECIAL;
-            }
-          }
 
-        for (int j = 0; j < 2; j++) {
-          int xGap = random.nextInt(w - 24) + xm + 5;
-          int yGap = random.nextInt(h - 24) + ym + 5;
-          int ww = 5;
-          int hh = 5;
-
-          xGap = xGap / 16 * 16 + 5;
-          yGap = yGap / 16 * 16 + 5;
-          if (random.nextInt(2) == 0) {
-            xGap = xm + (w - 5) * random.nextInt(2);
-            hh = 11;
+            // Grayish concrete floor
+            maps[x + y * 1024] = (br * 3 / 3) << 16 | (br * 4 / 4) << 8
+                | (br * 4 / 4);
           } else {
-            ww = 11;
-            yGap = ym + (h - 5) * random.nextInt(2);
+            // No, we're not. Draw the wall.
+            // Orange wall border
+            maps[x + y * 1024] = PIXEL_NORMAL_WALL;
           }
-          for (int y = yGap; y < yGap + hh; y++)
-            for (int x = xGap; x < xGap + ww; x++) {
-              int br = random.nextInt(32) + 112 - 64;
-              maps[x + y * 1024] = (br * 3 / 3) << 16 | (br * 4 / 4) << 8
-                  | (br * 4 / 4);
-            }
+
+          if (i == ROOM_COUNT - 1) {
+            // Give this room a red tint.
+            maps[x + y * 1024] &= PIXEL_MASK_SPECIAL;
+          }
         }
       }
 
-      for (int y = 1; y < 1024 - 1; y++)
-        inloop: for (int x = 1; x < 1024 - 1; x++) {
-          for (int xx = x - 1; xx <= x + 1; xx++)
-            for (int yy = y - 1; yy <= y + 1; yy++)
-              if (maps[xx + yy * 1024] < 0xff0000)
-                continue inloop;
+      // Put two exits in the room.
+      for (int j = 0; j < 2; j++) {
+        int xGap = random.nextInt(w - 24) + xm + 5;
+        int yGap = random.nextInt(h - 24) + ym + 5;
+        int ww = 5;
+        int hh = 5;
 
-          maps[x + y * 1024] = 0xffffff;
+        xGap = xGap / 16 * 16 + 5;
+        yGap = yGap / 16 * 16 + 5;
+        if (random.nextInt(2) == 0) {
+          xGap = xm + (w - 5) * random.nextInt(2);
+          hh = 11;
+        } else {
+          ww = 11;
+          yGap = ym + (h - 5) * random.nextInt(2);
         }
+        for (int y = yGap; y < yGap + hh; y++) {
+          for (int x = xGap; x < xGap + ww; x++) {
+            // A slightly darker color represents the exit.
+            int br = random.nextInt(32) + 112 - 64;
+            maps[x + y * 1024] = (br * 3 / 3) << 16 | (br * 4 / 4) << 8
+                | (br * 4 / 4);
+          }
+        }
+      }
     }
-    return monsterData;
+
+    // No idea. It ends up setting parts of the red room white, I think.
+    for (int y = 1; y < 1024 - 1; y++) {
+      inloop: for (int x = 1; x < 1024 - 1; x++) {
+        for (int xx = x - 1; xx <= x + 1; xx++)
+          for (int yy = y - 1; yy <= y + 1; yy++)
+            if (maps[xx + yy * 1024] < PIXEL_MASK_SPECIAL)
+              continue inloop;
+
+        maps[x + y * 1024] = 0xffffff;
+      }
+    }
   }
 
   private void generateSprites() {
