@@ -247,6 +247,7 @@ public class Game extends Frame {
   private void generateLightmap(int tick, int[] lightmap, int[] brightness,
       double playerDir, int xCam, int yCam) {
     for (int i = 0; i < 960; i++) {
+      // Calculate a point along the outer wall of the view.
       int xt = i % 240 - 120;
       int yt = (i / 240 % 2) * 239 - 120;
 
@@ -256,43 +257,64 @@ public class Game extends Frame {
         yt = tmp;
       }
 
+      // Figure out how far the current beam is from the player's view.
+      // In radians, not degrees, but same idea -- if the player is looking
+      // 180 degrees south, and this beam is pointing 270 degrees west,
+      // then the answer is 90 degrees (in radians). This is for creating a
+      // flashlight effect in front of the player.
+      //
+      // Clamp to a circle (2 x pi).
       double dd = Math.atan2(yt, xt) - playerDir;
       if (dd < -Math.PI)
         dd += Math.PI * 2;
       if (dd >= Math.PI)
         dd -= Math.PI * 2;
 
+      // This calculation is weird because of the 1- and the *255. It seems
+      // arbitrary. Maybe it is. brr is probably supposed to stand for
+      // something like "brightness times radius squared."
       int brr = (int) ((1 - dd * dd) * 255);
 
       int dist = 120;
       if (brr < 0) {
+        // Cut off the flashlight past a certain angle, but for better
+        // playability leave a small halo going all the way around the player.
         brr = 0;
         dist = 32;
       }
+      // At the very start of the level, fade in the light gradually.
       if (tick < 60)
         brr = brr * tick / 60;
 
       int j = 0;
       for (; j < dist; j++) {
+        // Loop through the beam's pixels one fraction of the total distance
+        // each iteration. This is very slightly inefficient because in some
+        // cases we'll calculate the same pixel twice.
         int xx = xt * j / 120 + 120;
         int yy = yt * j / 120 + 120;
         int xm = xx + xCam - 120;
         int ym = yy + yCam - 120;
 
+        // Stop the light if it hits a wall.
         if (maps[(xm + ym * 1024) & (1024 * 1024 - 1)] == 0xffffff)
           break;
 
+        // Do an approximate distance calculation. I'm not sure why this
+        // couldn't have been built into the brightness table, which would let
+        // us easily index using j.
         int xd = (xx - 120) * 256 / 120;
         int yd = (yy - 120) * 256 / 120;
-
         int ddd = (xd * xd + yd * yd) / 256;
         int br = brightness[ddd] * brr / 255;
 
+        // Draw the halo around the player.
         if (ddd < 16) {
           int tmp = 128 * (16 - ddd) / 16;
           br = br + tmp * (255 - br) / 255;
         }
 
+        // Fill in the lightmap entry.
         lightmap[xx + yy * 240] = br;
       }
     }
