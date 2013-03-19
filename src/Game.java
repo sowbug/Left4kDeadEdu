@@ -15,13 +15,19 @@ import java.awt.image.DataBufferInt;
 import java.util.Random;
 
 public class Game extends Frame {
+  private static final long serialVersionUID = 2099860140043826270L;
+
   private static final int ROOM_COUNT = 70;
+
   private static final int PIXEL_ZOMBIE_SKIN = 0xa0ff90;
   private static final int PIXEL_SKIN = 0xFF9993;
-  private static final int PIXEL_MASK_SPECIAL = 0xff0000;
+
   private static final int PIXEL_NORMAL_WALL = 0xFF8052;
   private static final int PIXEL_OUTER_WALL = 0xFFFEFE;
-  private static final long serialVersionUID = 2099860140043826270L;
+  private static final int PIXEL_INNER_WALL = 0xFFFFFF;
+  private static final int PIXEL_MASK_WALL = 0xff0000;
+  private static final int PIXEL_MASK_END_ROOM = 0xff0000;
+
   private boolean[] k = new boolean[32767];
   private int mouseEvent;
   private BufferedImage image;
@@ -227,6 +233,8 @@ public class Game extends Frame {
     for (int j = 0; j < 250; j++) {
       int xm = xCam + (int) (cos * j / 2);
       int ym = yCam - (int) (sin * j / 2);
+
+      // 0xffffff is the color of character clothes.
       if (maps[(xm + ym * 1024) & (1024 * 1024 - 1)] == 0xffffff)
         break;
       closestHitDist = j / 2;
@@ -744,7 +752,7 @@ public class Game extends Frame {
 
           if (i == ROOM_COUNT - 1) {
             // Give this room a red tint.
-            maps[x + y * 1024] &= PIXEL_MASK_SPECIAL;
+            maps[x + y * 1024] &= PIXEL_MASK_END_ROOM;
           }
         }
       }
@@ -776,15 +784,18 @@ public class Game extends Frame {
       }
     }
 
-    // No idea. It ends up setting parts of the red room white, I think.
+    // Paint the inside of each wall white. This is for wall-collision
+    // detection.
     for (int y = 1; y < 1024 - 1; y++) {
       inloop: for (int x = 1; x < 1024 - 1; x++) {
-        for (int xx = x - 1; xx <= x + 1; xx++)
-          for (int yy = y - 1; yy <= y + 1; yy++)
-            if (maps[xx + yy * 1024] < PIXEL_MASK_SPECIAL)
+        for (int xx = x - 1; xx <= x + 1; xx++) {
+          for (int yy = y - 1; yy <= y + 1; yy++) {
+            if (maps[xx + yy * 1024] < PIXEL_MASK_WALL) {
               continue inloop;
-
-        maps[x + y * 1024] = 0xffffff;
+            }
+          }
+        }
+        maps[x + y * 1024] = PIXEL_INNER_WALL;
       }
     }
   }
