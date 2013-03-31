@@ -29,29 +29,17 @@ public class Game extends Frame {
   private static final int PIXEL_MONSTER_HEAD = 0xFFFFFE;
   private static final int PIXEL_MASK_END_ROOM = 0xff0000;
 
-  private boolean[] k = new boolean[32767];
-  private int mouseEvent;
   private BufferedImage image;
   private Graphics ogr;
+
   private Random random;
   private int[] pixels;
   private int[] sprites;
   private int[] maps;
-  private int score;
-  private int hurtTime;
-  private int bonusTime;
   private int xWin0;
   private int yWin0;
   private int xWin1;
   private int yWin1;
-  private int level;
-  private int shootDelay;
-  private int rushTime;
-  private int damage;
-  private int ammo;
-  private int clips;
-  private boolean gameStarted;
-  private Graphics sg;
 
   private static final int MDO_X = 0;
   private static final int MDO_Y = 1;
@@ -68,6 +56,10 @@ public class Game extends Frame {
   private int yPlayerDist;
 
   private int closestHit;
+
+  private Session session;
+
+  private UserInput userInput;
 
   public static void main(String[] args) {
     Game game = new Game();
@@ -112,52 +104,113 @@ public class Game extends Frame {
   public Game() {
     enableEvents(AWTEvent.KEY_EVENT_MASK | AWTEvent.MOUSE_EVENT_MASK
         | AWTEvent.MOUSE_MOTION_EVENT_MASK);
+    userInput = new UserInput();
+  }
+
+  public void run() {
     image = new BufferedImage(240, 240, BufferedImage.TYPE_INT_RGB);
     ogr = image.getGraphics();
     random = new Random();
     pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
     sprites = new int[18 * 4 * 16 * 12 * 12];
-  }
 
-  public void run() {
     generateSprites();
 
-    while (true)
-      doGame();
-  }
-
-  private void doGame() {
-    score = 0;
-    hurtTime = 0;
-    bonusTime = 0;
-    xWin0 = 0;
-    yWin0 = 0;
-    xWin1 = 0;
-    yWin1 = 0;
-
     while (true) {
-      System.out.println("Playing full game...");
-      playFullGame();
+      session = new Session();
+      xWin0 = 0;
+      yWin0 = 0;
+      xWin1 = 0;
+      yWin1 = 0;
+
+      while (true) {
+        System.out.println("Playing full game...");
+        session.restart();
+        playUntilPlayerDies();
+      }
     }
   }
 
-  private void playFullGame() {
-    gameStarted = false;
-    level = 0;
-    shootDelay = 0;
-    rushTime = 150;
-    damage = 20;
-    ammo = 20;
-    clips = 20;
+  static class Session {
+    // Fields that are reset during attract.
+    int score;
+    int hurtTime; // Makes the screen red when player is getting bitten.
+    int bonusTime;
 
-    playLevels();
+    // Fields that are reset when entering attract.
+    boolean gameStarted;
+    int level;
+    int shootDelay;
+    int rushTime;
+    int damage;
+    int ammo;
+    int clips;
+
+    public Session() {
+    }
+
+    public void restart() {
+      gameStarted = false;
+      level = 0;
+      shootDelay = 0;
+      rushTime = 150;
+      damage = 20;
+      ammo = 20;
+      clips = 20;
+    }
+
+    public void winLevel() {
+      ++level;
+      System.out.println("Playing level " + level + "...");
+    }
+
+    public void drawLevel(Graphics ogr) {
+      ogr.drawString("Level " + level, 90, 70);
+    }
+
+    public void addScoreForMonsterDeath() {
+      score += level;
+    }
+
+    public void markGameStarted() {
+      score = 0;
+      gameStarted = true;
+    }
+
+    public void advanceRushTime(Random random) {
+      if (++rushTime >= 150) {
+        rushTime = -random.nextInt(2000);
+      }
+    }
+
   }
 
-  private void playLevels() {
+  static class UserInput {
+    boolean[] k = new boolean[32767];
+    int mouseEvent;
+
+    public UserInput() {
+
+    }
+
+    private void handleKeyboardInput(Point movement) {
+      // Move the player according to keyboard state.
+      if (k[KeyEvent.VK_A])
+        movement.x--;
+      if (k[KeyEvent.VK_D])
+        movement.x++;
+      if (k[KeyEvent.VK_W])
+        movement.y--;
+      if (k[KeyEvent.VK_S])
+        movement.y++;
+    }
+
+  }
+
+  private void playUntilPlayerDies() {
     while (true) {
       int tick = 0;
-      level++;
-      System.out.println("Playing level " + level + "...");
+      session.winLevel();
       int[] monsterData = new int[320 * 16];
       generateLevel(monsterData);
 
@@ -168,18 +221,14 @@ public class Game extends Frame {
 
       double playerDir = 0;
 
-      sg = getGraphics();
+      Graphics sg = getGraphics();
       random = new Random();
       while (true) {
-        if (gameStarted) {
+        if (session.gameStarted) {
           tick++;
-          rushTime++;
-
-          if (rushTime >= 150) {
-            rushTime = -random.nextInt(2000);
-          }
+          session.advanceRushTime(random);
           // Move player:
-          int mouse = mouseEvent;
+          int mouse = userInput.mouseEvent;
           playerDir = Math.atan2(mouse / 240 - 120, mouse % 240 - 120);
 
           double shootDir = playerDir
@@ -197,15 +246,16 @@ public class Game extends Frame {
           processMonsters(tick, monsterData, lightmap, playerDir, cos, sin,
               camera, closestHitDist);
 
-          if (damage >= 220) {
-            k[1] = false;
-            hurtTime = 255;
+          if (session.damage >= 220) {
+            userInput.k[1] = false;
+            session.hurtTime = 255;
             return;
           }
-          if (k[KeyEvent.VK_R] && ammo > 20 && clips < 220) {
-            shootDelay = 30;
-            ammo = 20;
-            clips += 10;
+          if (userInput.k[KeyEvent.VK_R] && session.ammo > 20
+              && session.clips < 220) {
+            session.shootDelay = 30;
+            session.ammo = 20;
+            session.clips += 10;
           }
 
           if (camera.x > xWin0 && camera.x < xWin1 && camera.y > yWin0
@@ -214,21 +264,20 @@ public class Game extends Frame {
           }
         }
 
-        bonusTime = bonusTime * 8 / 9;
-        hurtTime /= 2;
+        session.bonusTime = session.bonusTime * 8 / 9;
+        session.hurtTime /= 2;
 
         drawNoiseAndHUD(lightmap);
 
-        ogr.drawString("" + score, 4, 232);
-        if (!gameStarted) {
+        ogr.drawString("" + session.score, 4, 232);
+        if (!session.gameStarted) {
           ogr.drawString("Left 4k Dead", 80, 70);
-          if (k[1] && hurtTime == 0) {
-            score = 0;
-            gameStarted = true;
-            k[1] = false;
+          if (userInput.k[1] && session.hurtTime == 0) {
+            session.markGameStarted();
+            userInput.k[1] = false;
           }
         } else if (tick < 60) {
-          ogr.drawString("Level " + level, 90, 70);
+          session.drawLevel(ogr);
         }
 
         sg.drawImage(image, 0, 0, 480, 480, 0, 0, 240, 240, null);
@@ -358,7 +407,7 @@ public class Game extends Frame {
   }
 
   private boolean didPlayerPressFire() {
-    return shootDelay-- < 0 && k[1];
+    return session.shootDelay-- < 0 && userInput.k[1];
   }
 
   private int processMonster(int tick, int[] monsterData, double playerDir,
@@ -388,7 +437,7 @@ public class Game extends Frame {
       // It's rush time, OR c. It's the first tick of the game and it's one
       // of the last 16 monsters.
       if (maps[xPos + yPos * 1024] < PIXEL_MONSTER_HEAD
-          && (monsterIndex <= 128 || rushTime > 0 || (isSpecialMonster(monsterIndex) && tick == 1))) {
+          && (monsterIndex <= 128 || session.rushTime > 0 || (isSpecialMonster(monsterIndex) && tick == 1))) {
         placeNewMonster(monsterData, monsterIndex, xPos, yPos);
       } else {
         return closestHitDist;
@@ -471,8 +520,8 @@ public class Game extends Frame {
   }
 
   private void inflictNibbleDamage() {
-    damage++;
-    hurtTime += 20;
+    session.damage++;
+    session.hurtTime += 20;
   }
 
   private boolean isMonsterActive(int[] monsterData, int monsterIndex) {
@@ -552,13 +601,13 @@ public class Game extends Frame {
         + MDO_SAVED_MAP_PIXEL];
     // Mark monster inactive.
     monsterData[monsterIndex * 16 + MDO_ACTIVITY_LEVEL] = 0;
-    bonusTime = 120;
+    session.bonusTime = 120;
 
     // 50-50 chance of resetting damage or giving ammo.
     if ((monsterIndex & 1) == 0) {
-      damage = 20;
+      session.damage = 20;
     } else {
-      clips = 20;
+      session.clips = 20;
     }
     return closestHitDist;
   }
@@ -574,15 +623,7 @@ public class Game extends Frame {
     Point movement = new Point(0, 0);
 
     if (isPlayer(monsterIndex)) {
-      // Move the player according to keyboard state.
-      if (k[KeyEvent.VK_A])
-        movement.x--;
-      if (k[KeyEvent.VK_D])
-        movement.y++;
-      if (k[KeyEvent.VK_W])
-        movement.y--;
-      if (k[KeyEvent.VK_S])
-        movement.y++;
+      userInput.handleKeyboardInput(movement);
     } else {
       // Not agitated enough. Don't do anything.
       if (monsterData[monsterIndex * 16 + MDO_RAGE_LEVEL] < 8) {
@@ -677,16 +718,16 @@ public class Game extends Frame {
   private void doShot(int[] monsterData, int[] lightmap, double playerDir,
       double cos, double sin, int closestHitDist, int closestHit) {
     // Is the ammo used up?
-    if (ammo >= 220) {
+    if (session.ammo >= 220) {
       // Yes. Longer delay.
-      shootDelay = 2;
+      session.shootDelay = 2;
       // Require trigger release.
-      k[1] = false;
+      userInput.k[1] = false;
     } else {
       // Fast fire.
-      shootDelay = 1;
+      session.shootDelay = 1;
       // Use up bullets.
-      ammo += 4;
+      session.ammo += 4;
     }
 
     // Whoever's closest gets hit. But how do we know direction was right?
@@ -783,8 +824,8 @@ public class Game extends Frame {
     maps[xPos + yPos * 1024] = PIXEL_MONSTER_HEAD;
 
     // Mark monster as idle or attacking.
-    monsterData[m * 16 + MDO_RAGE_LEVEL] = (rushTime > 0 || random.nextInt(3) == 0) ? 127
-        : 0;
+    monsterData[m * 16 + MDO_RAGE_LEVEL] = (session.rushTime > 0 || random
+        .nextInt(3) == 0) ? 127 : 0;
 
     // Mark monster active.
     monsterData[m * 16 + MDO_ACTIVITY_LEVEL] = 1;
@@ -805,13 +846,13 @@ public class Game extends Frame {
     double poww = 32; // How far to spread the blood
 
     // Is this monster sufficiently messed up to die?
-    if (monsterData[m * 16 + MDO_ACTIVITY_LEVEL] >= 2 + level) {
+    if (monsterData[m * 16 + MDO_ACTIVITY_LEVEL] >= 2 + session.level) {
       rot = Math.PI * 2; // All the way around
       amount = 60; // lots of blood
       poww = 16;
       maps[(xPos) + (yPos) * 1024] = 0xa00000; // Red
       monsterData[m * 16 + MDO_ACTIVITY_LEVEL] = 0; // Kill monster
-      score += level; // Increase player score
+      session.addScoreForMonsterDeath();
     }
 
     // Draw blood.
@@ -846,7 +887,7 @@ public class Game extends Frame {
     for (int y = 0; y < 240; y++) {
       for (int x = 0; x < 240; x++) {
         int noise = random.nextInt(16) * random.nextInt(16) / 16;
-        if (!gameStarted)
+        if (!session.gameStarted)
           noise *= 4;
 
         int c = pixels[x + y * 240];
@@ -856,21 +897,21 @@ public class Game extends Frame {
         int g = ((c >> 8) & 0xff) * l / 255 + noise;
         int b = ((c) & 0xff) * l / 255 + noise;
 
-        r = r * (255 - hurtTime) / 255 + hurtTime;
-        g = g * (255 - bonusTime) / 255 + bonusTime;
+        r = r * (255 - session.hurtTime) / 255 + session.hurtTime;
+        g = g * (255 - session.bonusTime) / 255 + session.bonusTime;
         pixels[x + y * 240] = r << 16 | g << 8 | b;
       }
-      if (y % 2 == 0 && (y >= damage && y < 220)) {
+      if (y % 2 == 0 && (y >= session.damage && y < 220)) {
         for (int x = 232; x < 238; x++) {
           pixels[y * 240 + x] = 0x800000;
         }
       }
-      if (y % 2 == 0 && (y >= ammo && y < 220)) {
+      if (y % 2 == 0 && (y >= session.ammo && y < 220)) {
         for (int x = 224; x < 230; x++) {
           pixels[y * 240 + x] = 0x808000;
         }
       }
-      if (y % 10 < 9 && (y >= clips && y < 220)) {
+      if (y % 10 < 9 && (y >= session.clips && y < 220)) {
         for (int x = 221; x < 222; x++) {
           pixels[y * 240 + 221] = 0xffff00;
         }
@@ -894,7 +935,7 @@ public class Game extends Frame {
     maps = new int[1024 * 1024];
 
     // Make the levels random but repeatable.
-    random = new Random(4329 + level);
+    random = new Random(4329 + session.level);
 
     // Draw the floor of the level with an uneven green color.
     // Put a wall around the perimeter.
@@ -1101,16 +1142,16 @@ public class Game extends Frame {
     case KeyEvent.KEY_PRESSED:
       down = true;
     case KeyEvent.KEY_RELEASED:
-      k[((KeyEvent) e).getKeyCode()] = down;
+      userInput.k[((KeyEvent) e).getKeyCode()] = down;
       break;
     case MouseEvent.MOUSE_PRESSED:
       down = true;
     case MouseEvent.MOUSE_RELEASED:
-      k[((MouseEvent) e).getButton()] = down;
+      userInput.k[((MouseEvent) e).getButton()] = down;
     case MouseEvent.MOUSE_MOVED:
     case MouseEvent.MOUSE_DRAGGED:
-      mouseEvent = ((MouseEvent) e).getX() / 2 + ((MouseEvent) e).getY() / 2
-          * 240;
+      userInput.mouseEvent = ((MouseEvent) e).getX() / 2
+          + ((MouseEvent) e).getY() / 2 * 240;
     }
   }
 }
