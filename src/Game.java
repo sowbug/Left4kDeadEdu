@@ -676,88 +676,99 @@ public class Game extends Frame {
 
   private void doShot(int[] monsterData, int[] lightmap, double playerDir,
       double cos, double sin, int closestHitDist, int closestHit) {
-    {
-      // Is the ammo used up?
-      if (ammo >= 220) {
-        // Yes. Longer delay.
-        shootDelay = 2;
-        // Require trigger release.
-        k[1] = false;
-      } else {
-        // Fast fire.
-        shootDelay = 1;
-        // Use up bullets.
-        ammo += 4;
-      }
+    // Is the ammo used up?
+    if (ammo >= 220) {
+      // Yes. Longer delay.
+      shootDelay = 2;
+      // Require trigger release.
+      k[1] = false;
+    } else {
+      // Fast fire.
+      shootDelay = 1;
+      // Use up bullets.
+      ammo += 4;
+    }
 
-      // Whoever's closest gets hit. But how do we know direction was right?
-      if (closestHit > 0) {
-        monsterData[closestHit * 16 + MDO_DAMAGE_TAKEN] = 1;
-        monsterData[closestHit * 16 + MDO_RAGE_LEVEL] = 127;
-      }
+    // Whoever's closest gets hit. But how do we know direction was right?
+    if (closestHit > 0) {
+      monsterData[closestHit * 16 + MDO_DAMAGE_TAKEN] = 1;
+      monsterData[closestHit * 16 + MDO_RAGE_LEVEL] = 127;
+    }
 
-      // Draw the trace.
-      int glow = 0;
-      for (int j = closestHitDist; j >= 0; j--) {
-        // Calculate pixel position.
-        int xm = +(int) (cos * j) + 120;
-        int ym = -(int) (sin * j) + 120;
+    drawBulletTrace(lightmap, cos, sin, closestHitDist);
 
-        // Are we still within the view?
-        if (xm > 0 && ym > 0 && xm < 240 && ym < 240) {
+    // Did the bullet hit within view?
+    if (closestHitDist < 120) {
+      closestHitDist -= 3;
+      Point hitPoint = new Point((int) (120 + cos * closestHitDist),
+          (int) (120 - sin * closestHitDist));
 
-          // Every so often, draw a white dot and renew the glow. This gives a
-          // cool randomized effect that looks like spitting sparks.
-          if (random.nextInt(20) == 0 || j == closestHitDist) {
-            pixels[xm + ym * 240] = 0xffffff;
-            glow = 200;
-          }
+      drawImpactFlash(lightmap, hitPoint);
+      drawBulletDebris(playerDir, closestHit, hitPoint);
+    }
+  }
 
-          // Either way, brighten up the path according to the current glow.
-          lightmap[xm + ym * 240] += glow * (255 - lightmap[xm + ym * 240])
-              / 255;
+  private void drawBulletTrace(int[] lightmap, double cos, double sin,
+      int closestHitDist) {
+    int glow = 0;
+    for (int j = closestHitDist; j >= 0; j--) {
+      // Calculate pixel position.
+      int xm = +(int) (cos * j) + 120;
+      int ym = -(int) (sin * j) + 120;
+
+      // Are we still within the view?
+      if (isWithinView(xm, ym)) {
+
+        // Every so often, draw a white dot and renew the glow. This gives a
+        // cool randomized effect that looks like spitting sparks.
+        if (random.nextInt(20) == 0 || j == closestHitDist) {
+          pixels[xm + ym * 240] = 0xffffff;
+          glow = 200;
         }
 
-        // Fade the glow.
-        glow = glow * 20 / 21;
+        // Either way, brighten up the path according to the current glow.
+        lightmap[xm + ym * 240] += glow * (255 - lightmap[xm + ym * 240]) / 255;
       }
 
-      // Did the bullet hit within view?
-      if (closestHitDist < 120) {
-        closestHitDist -= 3;
-        int xx = (int) (120 + cos * closestHitDist);
-        int yy = (int) (120 - sin * closestHitDist);
+      // Fade the glow.
+      glow = glow * 20 / 21;
+    }
+  }
 
-        // Make a great big flash where the bullet hit.
-        for (int x = -12; x <= 12; x++) {
-          for (int y = -12; y <= 12; y++) {
-            int xd = xx + x;
-            int yd = yy + y;
-            if (xd >= 0 && yd >= 0 && xd < 240 && yd < 240) {
-              lightmap[xd + yd * 240] += 2000 / (x * x + y * y + 10)
-                  * (255 - lightmap[xd + yd * 240]) / 255;
-            }
-          }
-        }
-
-        // And draw a bunch of debris.
-        for (int i = 0; i < 10; i++) {
-          double pow = random.nextInt(100) * random.nextInt(100) * 8.0 / 10000;
-          double dir = (random.nextInt(100) - random.nextInt(100)) / 100.0;
-          int xd = (int) (xx - Math.cos(playerDir + dir) * pow)
-              + random.nextInt(4) - random.nextInt(4);
-          int yd = (int) (yy - Math.sin(playerDir + dir) * pow)
-              + random.nextInt(4) - random.nextInt(4);
-          if (xd >= 0 && yd >= 0 && xd < 240 && yd < 240) {
-            if (closestHit > 0) {
-              pixels[xd + yd * 240] = 0xff0000;
-            } else {
-              pixels[xd + yd * 240] = 0xcacaca;
-            }
-          }
+  private void drawBulletDebris(double playerDir, int closestHit, Point hitPoint) {
+    for (int i = 0; i < 10; i++) {
+      double pow = random.nextInt(100) * random.nextInt(100) * 8.0 / 10000;
+      double dir = (random.nextInt(100) - random.nextInt(100)) / 100.0;
+      int xd = (int) (hitPoint.x - Math.cos(playerDir + dir) * pow)
+          + random.nextInt(4) - random.nextInt(4);
+      int yd = (int) (hitPoint.y - Math.sin(playerDir + dir) * pow)
+          + random.nextInt(4) - random.nextInt(4);
+      if (xd >= 0 && yd >= 0 && xd < 240 && yd < 240) {
+        if (closestHit > 0) {
+          pixels[xd + yd * 240] = 0xff0000;
+        } else {
+          pixels[xd + yd * 240] = 0xcacaca;
         }
       }
     }
+  }
+
+  private void drawImpactFlash(int[] lightmap, Point hitPoint) {
+    for (int x = -12; x <= 12; x++) {
+      for (int y = -12; y <= 12; y++) {
+        Point offsetPoint = new Point(hitPoint.x + x, hitPoint.y + y);
+        if (offsetPoint.x >= 0 && offsetPoint.y >= 0 && offsetPoint.x < 240
+            && offsetPoint.y < 240) {
+          lightmap[offsetPoint.x + offsetPoint.y * 240] += 2000
+              / (x * x + y * y + 10)
+              * (255 - lightmap[offsetPoint.x + offsetPoint.y * 240]) / 255;
+        }
+      }
+    }
+  }
+
+  private boolean isWithinView(int xm, int ym) {
+    return xm > 0 && ym > 0 && xm < 240 && ym < 240;
   }
 
   private void placeNewMonster(int[] monsterData, int m, int xPos, int yPos) {
