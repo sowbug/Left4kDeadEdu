@@ -63,6 +63,12 @@ public class Game extends Frame {
   private static final int MDO_ACTIVITY_LEVEL = 11;
   private static final int MDO_SAVED_MAP_PIXEL = 15;
 
+  private int xPlayerDist;
+
+  private int yPlayerDist;
+
+  private int closestHit;
+
   public static void main(String[] args) {
     Game game = new Game();
     game.setSize(480, 480);
@@ -92,6 +98,15 @@ public class Game extends Frame {
   }
 
   public void windowDeactivated(WindowEvent e) {
+  }
+
+  static class Point {
+    public Point(int x, int y) {
+      this.x = x;
+      this.y = y;
+    }
+
+    int x, y;
   }
 
   public Game() {
@@ -172,16 +187,15 @@ public class Game extends Frame {
           double cos = Math.cos(-shootDir);
           double sin = Math.sin(-shootDir);
 
-          int xCam = monsterData[MDO_X];
-          int yCam = monsterData[MDO_Y];
+          Point camera = new Point(monsterData[MDO_X], monsterData[MDO_Y]);
 
-          generateLightmap(tick, lightmap, brightness, playerDir, xCam, yCam);
-          drawMapView(xCam, yCam);
+          generateLightmap(tick, lightmap, brightness, playerDir, camera);
+          drawMapView(camera);
 
-          int closestHitDist = calculateClosestHitDistance(cos, sin, xCam, yCam);
+          int closestHitDist = calculateClosestHitDistance(cos, sin, camera);
 
           processMonsters(tick, monsterData, lightmap, playerDir, cos, sin,
-              xCam, yCam, closestHitDist);
+              camera, closestHitDist);
 
           if (damage >= 220) {
             k[1] = false;
@@ -194,7 +208,8 @@ public class Game extends Frame {
             clips += 10;
           }
 
-          if (xCam > xWin0 && xCam < xWin1 && yCam > yWin0 && yCam < yWin1) {
+          if (camera.x > xWin0 && camera.x < xWin1 && camera.y > yWin0
+              && camera.y < yWin1) {
             return;
           }
         }
@@ -228,12 +243,11 @@ public class Game extends Frame {
     }
   }
 
-  private int calculateClosestHitDistance(double cos, double sin, int xCam,
-      int yCam) {
+  private int calculateClosestHitDistance(double cos, double sin, Point camera) {
     int closestHitDist = 0;
     for (int j = 0; j < 250; j++) {
-      int xm = xCam + (int) (cos * j / 2);
-      int ym = yCam - (int) (sin * j / 2);
+      int xm = camera.x + (int) (cos * j / 2);
+      int ym = camera.y - (int) (sin * j / 2);
 
       // 0xffffff is the color of character clothes.
       if (maps[(xm + ym * 1024) & (1024 * 1024 - 1)] == 0xffffff)
@@ -243,10 +257,10 @@ public class Game extends Frame {
     return closestHitDist;
   }
 
-  private void drawMapView(int xCam, int yCam) {
+  private void drawMapView(Point camera) {
     for (int y = 0; y < 240; y++) {
-      int xm = xCam - 120;
-      int ym = y + yCam - 120;
+      int xm = camera.x - 120;
+      int ym = y + camera.y - 120;
       for (int x = 0; x < 240; x++) {
         pixels[x + y * 240] = maps[(xm + x + ym * 1024) & (1024 * 1024 - 1)];
       }
@@ -254,7 +268,7 @@ public class Game extends Frame {
   }
 
   private void generateLightmap(int tick, int[] lightmap, int[] brightness,
-      double playerDir, int xCam, int yCam) {
+      double playerDir, Point camera) {
     for (int i = 0; i < 960; i++) {
       // Calculate a point along the outer wall of the view.
       int xt = i % 240 - 120;
@@ -302,8 +316,8 @@ public class Game extends Frame {
         // cases we'll calculate the same pixel twice.
         int xx = xt * j / 120 + 120;
         int yy = yt * j / 120 + 120;
-        int xm = xx + xCam - 120;
-        int ym = yy + yCam - 120;
+        int xm = xx + camera.x - 120;
+        int ym = yy + camera.y - 120;
 
         // Stop the light if it hits a wall.
         if (maps[(xm + ym * 1024) & (1024 * 1024 - 1)] == 0xffffff)
@@ -330,340 +344,415 @@ public class Game extends Frame {
   }
 
   private void processMonsters(int tick, int[] monsterData, int[] lightmap,
-      double playerDir, double cos, double sin, int xCam, int yCam,
-      int closestHitDist) {
-    {
-      boolean shoot = shootDelay-- < 0 && k[1];
-      int closestHit = 0;
+      double playerDir, double cos, double sin, Point camera, int closestHitDist) {
+    closestHit = 0;
 
-      nextMonster: for (int monsterIndex = 0; monsterIndex < 256 + 16; monsterIndex++) {
-        int xPos = monsterData[monsterIndex * 16 + MDO_X];
-        int yPos = monsterData[monsterIndex * 16 + MDO_Y];
+    for (int monsterIndex = 0; monsterIndex < 256 + 16; monsterIndex++)
+      closestHitDist = processMonster(tick, monsterData, playerDir, cos, sin,
+          camera, closestHitDist, monsterIndex);
 
-        // Is this monster inactive?
-        if (monsterData[monsterIndex * 16 + MDO_ACTIVITY_LEVEL] == 0) {
-          // Yes. Try to activate it.
+    // Did the player press the fire button?
+    if (didPlayerPressFire())
+      doShot(monsterData, lightmap, playerDir, cos, sin, closestHitDist,
+          closestHit);
+  }
 
-          // Pick a random spot to put it.
-          xPos = (random.nextInt(62) + 1) * 16 + 8;
-          yPos = (random.nextInt(62) + 1) * 16 + 8;
+  private boolean didPlayerPressFire() {
+    return shootDelay-- < 0 && k[1];
+  }
 
-          // How close is it to the player?
-          int xd = xCam - xPos;
-          int yd = yCam - yPos;
-          if (xd * xd + yd * yd < 180 * 180) {
-            // Too close. Not fair. So put the monster inside a wall. I don't
-            // understand why this isn't just a continue;
-            xPos = 1;
-            yPos = 1;
-          }
+  private int processMonster(int tick, int[] monsterData, double playerDir,
+      double cos, double sin, Point camera, int closestHitDist, int monsterIndex) {
 
-          // Are all these true?
-          // 1. The monster is not on a wall or other monster, AND
-          // 2. Any of these is true: a. It's an early-numbered monster, OR b.
-          // It's rush time, OR c. It's the first tick of the game and it's one
-          // of the last 16 monsters.
-          if (maps[xPos + yPos * 1024] < PIXEL_MONSTER_HEAD
-              && (monsterIndex <= 128 || rushTime > 0 || (monsterIndex > 255 && tick == 1))) {
-            placeNewMonster(monsterData, monsterIndex, xPos, yPos);
-          } else {
-            // Don't activate this monster. Give it another shot next time
-            // around.
-            continue;
-          }
-        } else {
-          // Calculate distance from player.
-          int xd = xPos - xCam;
-          int yd = yPos - yCam;
+    int xPos = monsterData[monsterIndex * 16 + MDO_X];
+    int yPos = monsterData[monsterIndex * 16 + MDO_Y];
 
-          // One of the special monsters?
-          if (monsterIndex >= 255) {
-            // Close to the player?
-            if (xd * xd + yd * yd < 8 * 8) {
-              // Yes. Kill it.
+    if (!isMonsterActive(monsterData, monsterIndex)) {
+      // Try to activate it.
 
-              // Replace the map pixel.
-              maps[xPos + yPos * 1024] = monsterData[monsterIndex * 16
-                  + MDO_SAVED_MAP_PIXEL];
-              // Mark monster inactive.
-              monsterData[monsterIndex * 16 + MDO_ACTIVITY_LEVEL] = 0;
-              bonusTime = 120;
+      // Pick a random spot to put it.
+      xPos = (random.nextInt(62) + 1) * 16 + 8;
+      yPos = (random.nextInt(62) + 1) * 16 + 8;
 
-              // 50-50 chance of resetting damage or giving ammo.
-              if ((monsterIndex & 1) == 0) {
-                damage = 20;
-              } else {
-                clips = 20;
-              }
-              continue;
-            }
-          } else if (xd * xd + yd * yd > 340 * 340) {
-            // Not a special monster. If it wandered too far from the player,
-            // or more likely the player wandered too far from it, kill it.
-            // Basically, this keeps the player reasonably surrounded with
-            // monsters waiting to come to life without wasting too many
-            // resources on idle ones.
-            maps[xPos + yPos * 1024] = monsterData[monsterIndex * 16
-                + MDO_SAVED_MAP_PIXEL];
-            monsterData[monsterIndex * 16 + MDO_ACTIVITY_LEVEL] = 0;
-            continue;
-          }
+      Point distance = new Point(camera.x - xPos, camera.y - yPos);
+      if (isTooCloseToSpawn(distance)) {
+        // Too close. Not fair. So put the monster inside a wall. I don't
+        // understand why this isn't just a continue;
+        xPos = 1;
+        yPos = 1;
+      }
+
+      // Are all these true?
+      // 1. The monster is not on a wall or other monster, AND
+      // 2. Any of these is true: a. It's an early-numbered monster, OR b.
+      // It's rush time, OR c. It's the first tick of the game and it's one
+      // of the last 16 monsters.
+      if (maps[xPos + yPos * 1024] < PIXEL_MONSTER_HEAD
+          && (monsterIndex <= 128 || rushTime > 0 || (isSpecialMonster(monsterIndex) && tick == 1))) {
+        placeNewMonster(monsterData, monsterIndex, xPos, yPos);
+      } else {
+        return closestHitDist;
+      }
+    } else {
+      Point distance = new Point(camera.x - xPos, camera.y - yPos);
+
+      if (isSpecialMonster(monsterIndex)) {
+        if (isTouchingPlayer(distance)) {
+          return killSpecialMonster(monsterData, closestHitDist, monsterIndex,
+              xPos, yPos);
         }
+      } else if (isOutOfView(distance)) {
+        return recycleOutOfViewMonster(monsterData, closestHitDist,
+            monsterIndex, xPos, yPos);
+      }
+    }
 
-        // Monster is active. Calculate position relative to player.
-        int xm = xPos - xCam + 120;
-        int ym = monsterData[monsterIndex * 16 + MDO_Y] - yCam + 120;
+    drawMonster(tick, monsterData, playerDir, camera, monsterIndex, xPos);
 
-        // Get monster's direction. This is just for figuring out which sprite
-        // to draw.
-        int d = monsterData[monsterIndex * 16 + MDO_DIRECTION];
-        if (monsterIndex == 0) {
-          // or if this is the player, convert radian direction.
-          d = (((int) (playerDir / (Math.PI * 2) * 16 + 4.5 + 16)) & 15);
+    boolean moved = false;
+
+    if (hasMonsterTakenDamage(monsterData, monsterIndex)) {
+      processMonsterDamage(monsterData, playerDir, monsterIndex, xPos, yPos);
+      return closestHitDist;
+    }
+
+    xPlayerDist = camera.x - xPos;
+    yPlayerDist = camera.y - yPos;
+
+    if (!isSpecialMonster(monsterIndex)) {
+      // Calculate distance to player.
+      double rx = -(cos * xPlayerDist - sin * yPlayerDist);
+      double ry = cos * yPlayerDist + sin * xPlayerDist;
+
+      // Is this monster near the player?
+      if (isMonsterMouthTouchingPlayer(monsterIndex, rx, ry)) {
+        inflictNibbleDamage();
+      }
+
+      if (canMonsterSeePlayer(rx, ry) && random.nextInt(10) == 0) {
+        agitateMonster(monsterData, monsterIndex);
+      }
+
+      // Mark which monster so far is closest to the player.
+      if (rx > 0 && rx < closestHitDist && ry > -8 && ry < 8) {
+        closestHitDist = (int) (rx);
+        closestHit = monsterIndex;
+      }
+
+      for (int i = 0; i < 2; i++) {
+        Boolean shouldSkip = new Boolean(false);
+        moved = doDirLoop(monsterData, monsterIndex, moved, i, shouldSkip);
+        if (shouldSkip)
+          return closestHitDist;
+      }
+      if (moved) {
+        // Shuffle to next frame in sprite.
+        monsterData[monsterIndex * 16 + MDO_SPRITE_FRAME]++;
+      }
+    }
+    return closestHitDist;
+  }
+
+  private boolean hasMonsterTakenDamage(int[] monsterData, int monsterIndex) {
+    return monsterData[monsterIndex * 16 + MDO_DAMAGE_TAKEN] > 0;
+  }
+
+  private boolean isMonsterMouthTouchingPlayer(int monsterIndex, double rx,
+      double ry) {
+    return rx > -6 && rx < 6 && ry > -6 && ry < 6 && monsterIndex > 0;
+  }
+
+  private void agitateMonster(int[] monsterData, int monsterIndex) {
+    monsterData[monsterIndex * 16 + MDO_RAGE_LEVEL]++;
+  }
+
+  private boolean canMonsterSeePlayer(double rx, double ry) {
+    return rx > -32 && rx < 220 && ry > -32 && ry < 32;
+  }
+
+  private void inflictNibbleDamage() {
+    damage++;
+    hurtTime += 20;
+  }
+
+  private boolean isMonsterActive(int[] monsterData, int monsterIndex) {
+    return monsterData[monsterIndex * 16 + MDO_ACTIVITY_LEVEL] != 0;
+  }
+
+  private boolean isTooCloseToSpawn(Point distance) {
+    return distance.x * distance.x + distance.y * distance.y < 180 * 180;
+  }
+
+  private void drawMonster(int tick, int[] monsterData, double playerDir,
+      Point camera, int monsterIndex, int xPos) {
+    // Monster is active. Calculate position relative to player.
+    int xm = xPos - camera.x + 120;
+    int ym = monsterData[monsterIndex * 16 + MDO_Y] - camera.y + 120;
+
+    // Get monster's direction. This is just for figuring out which sprite
+    // to draw.
+    int d = monsterData[monsterIndex * 16 + MDO_DIRECTION];
+    if (isPlayer(monsterIndex)) {
+      // or if this is the player, convert radian direction.
+      d = (((int) (playerDir / (Math.PI * 2) * 16 + 4.5 + 16)) & 15);
+    }
+
+    d += ((monsterData[monsterIndex * 16 + MDO_SPRITE_FRAME] / 4) & 3) * 16;
+
+    // If non-special monster, convert to actual sprite pixel offset.
+    int p = (0 * 16 + d) * 144;
+    if (monsterIndex > 0) {
+      p += ((monsterIndex & 15) + 1) * 144 * 16 * 4;
+    }
+
+    // Special non-player monster: cycle through special sprite, either
+    // red or yellow, spinning.
+    if (monsterIndex > 255) {
+      p = (17 * 4 * 16 + ((monsterIndex & 1) * 16 + (tick & 15))) * 144;
+    }
+
+    // Render the monster.
+    for (int y = ym - 6; y < ym + 6; y++) {
+      for (int x = xm - 6; x < xm + 6; x++) {
+        int c = sprites[p++];
+        if (c > 0 && x >= 0 && y >= 0 && x < 240 && y < 240) {
+          pixels[x + y * 240] = c;
         }
+      }
+    }
+  }
 
-        d += ((monsterData[monsterIndex * 16 + MDO_SPRITE_FRAME] / 4) & 3) * 16;
+  private int recycleOutOfViewMonster(int[] monsterData, int closestHitDist,
+      int monsterIndex, int xPos, int yPos) {
+    // Not a special monster. If it wandered too far from the player,
+    // or more likely the player wandered too far from it, kill it.
+    // Basically, this keeps the player reasonably surrounded with
+    // monsters waiting to come to life without wasting too many
+    // resources on idle ones.
+    maps[xPos + yPos * 1024] = monsterData[monsterIndex * 16
+        + MDO_SAVED_MAP_PIXEL];
+    monsterData[monsterIndex * 16 + MDO_ACTIVITY_LEVEL] = 0;
+    return closestHitDist;
+  }
 
-        // If non-special monster, convert to actual sprite pixel offset.
-        int p = (0 * 16 + d) * 144;
-        if (monsterIndex > 0) {
-          p += ((monsterIndex & 15) + 1) * 144 * 16 * 4;
+  private boolean isOutOfView(Point distance) {
+    return distance.x * distance.x + distance.y * distance.y > 340 * 340;
+  }
+
+  private boolean isTouchingPlayer(Point distance) {
+    return distance.x * distance.x + distance.y * distance.y < 8 * 8;
+  }
+
+  private int killSpecialMonster(int[] monsterData, int closestHitDist,
+      int monsterIndex, int xPos, int yPos) {
+    // Yes. Kill it.
+
+    // Replace the map pixel.
+    maps[xPos + yPos * 1024] = monsterData[monsterIndex * 16
+        + MDO_SAVED_MAP_PIXEL];
+    // Mark monster inactive.
+    monsterData[monsterIndex * 16 + MDO_ACTIVITY_LEVEL] = 0;
+    bonusTime = 120;
+
+    // 50-50 chance of resetting damage or giving ammo.
+    if ((monsterIndex & 1) == 0) {
+      damage = 20;
+    } else {
+      clips = 20;
+    }
+    return closestHitDist;
+  }
+
+  private boolean isSpecialMonster(int monsterIndex) {
+    return monsterIndex >= 255;
+  }
+
+  private boolean doDirLoop(int[] monsterData, int monsterIndex, boolean moved,
+      int i, Boolean shouldSkip) {
+    Point position = new Point(monsterData[monsterIndex * 16 + MDO_X],
+        monsterData[monsterIndex * 16 + MDO_Y]);
+    Point movement = new Point(0, 0);
+
+    if (isPlayer(monsterIndex)) {
+      // Move the player according to keyboard state.
+      if (k[KeyEvent.VK_A])
+        movement.x--;
+      if (k[KeyEvent.VK_D])
+        movement.y++;
+      if (k[KeyEvent.VK_W])
+        movement.y--;
+      if (k[KeyEvent.VK_S])
+        movement.y++;
+    } else {
+      // Not agitated enough. Don't do anything.
+      if (monsterData[monsterIndex * 16 + MDO_RAGE_LEVEL] < 8) {
+        shouldSkip = true;
+        return false;
+      }
+
+      // Unsure. Seems to be some kind of wandering algorithm.
+      if (monsterData[monsterIndex * 16 + MDO_UNKNOWN_8] != 12) {
+        xPlayerDist = (monsterData[monsterIndex * 16 + MDO_UNKNOWN_8]) % 5 - 2;
+        yPlayerDist = (monsterData[monsterIndex * 16 + MDO_UNKNOWN_8]) / 5 - 2;
+        if (random.nextInt(10) == 0) {
+          monsterData[monsterIndex * 16 + MDO_UNKNOWN_8] = 12;
         }
+      }
 
-        // Special non-player monster: cycle through special sprite, either
-        // red or yellow, spinning.
-        if (monsterIndex > 255) {
-          p = (17 * 4 * 16 + ((monsterIndex & 1) * 16 + (tick & 15))) * 144;
-        }
+      // Move generally toward the player.
+      double xxd = Math.sqrt(xPlayerDist * xPlayerDist);
+      double yyd = Math.sqrt(yPlayerDist * yPlayerDist);
+      if (random.nextInt(1024) / 1024.0 < yyd / xxd) {
+        if (yPlayerDist < 0)
+          movement.y--;
+        if (yPlayerDist > 0)
+          movement.y++;
+      }
+      if (random.nextInt(1024) / 1024.0 < xxd / yyd) {
+        if (xPlayerDist < 0)
+          movement.x--;
+        if (xPlayerDist > 0)
+          movement.x++;
+      }
 
-        // Render the monster.
-        for (int y = ym - 6; y < ym + 6; y++) {
-          for (int x = xm - 6; x < xm + 6; x++) {
-            int c = sprites[p++];
-            if (c > 0 && x >= 0 && y >= 0 && x < 240 && y < 240) {
-              pixels[x + y * 240] = c;
-            }
-          }
-        }
+      // Mark that the monster moved so we can update pixels later.
+      moved = true;
 
-        boolean moved = false;
+      // Pick the right sprite frame depending on direction.
+      double dir = Math.atan2(yPlayerDist, xPlayerDist);
+      monsterData[monsterIndex * 16 + MDO_DIRECTION] = (((int) (dir
+          / (Math.PI * 2) * 16 + 4.5 + 16)) & 15);
+    }
 
-        // Has this monster just taken some damage?
-        if (monsterData[monsterIndex * 16 + MDO_DAMAGE_TAKEN] > 0) {
-          processMonsterDamage(monsterData, playerDir, monsterIndex, xPos, yPos);
-          continue nextMonster;
-        }
+    // I think this is a way to move fast but not go through walls.
+    // Start by moving a small amount, test for wall hit, if successful
+    // try moving more.
+    movement.y *= i;
+    movement.x *= 1 - i;
 
-        int xPlayerDist = xCam - xPos;
-        int yPlayerDist = yCam - yPos;
+    if (didMove(movement)) {
+      // Restore the map pixel.
+      maps[position.x + position.y * 1024] = monsterData[monsterIndex * 16
+          + MDO_SAVED_MAP_PIXEL];
 
-        // Not special monster?
-        if (monsterIndex <= 255) {
-          // Calculate distance to player.
-          double rx = -(cos * xPlayerDist - sin * yPlayerDist);
-          double ry = cos * yPlayerDist + sin * xPlayerDist;
-
-          // Is this monster near the player?
-          if (rx > -6 && rx < 6 && ry > -6 && ry < 6 && monsterIndex > 0) {
-            // Yep. Hurt.
-            damage++;
-            hurtTime += 20;
-          }
-
-          // If the monster is nearby, get agitated.
-          if (rx > -32 && rx < 220 && ry > -32 && ry < 32
-              && random.nextInt(10) == 0) {
-            monsterData[monsterIndex * 16 + MDO_RAGE_LEVEL]++;
-          }
-
-          // Mark which monster so far is closest to the player.
-          if (rx > 0 && rx < closestHitDist && ry > -8 && ry < 8) {
-            closestHitDist = (int) (rx);
-            closestHit = monsterIndex;
-          }
-
-          dirLoop: for (int i = 0; i < 2; i++) {
-            int xa = 0;
-            int ya = 0;
-            xPos = monsterData[monsterIndex * 16 + MDO_X];
-            yPos = monsterData[monsterIndex * 16 + MDO_Y];
-
-            if (monsterIndex == 0) {
-              // Move the player according to keyboard state.
-              if (k[KeyEvent.VK_A])
-                xa--;
-              if (k[KeyEvent.VK_D])
-                xa++;
-              if (k[KeyEvent.VK_W])
-                ya--;
-              if (k[KeyEvent.VK_S])
-                ya++;
-            } else {
-              // Not agitated enough. Don't do anything.
-              if (monsterData[monsterIndex * 16 + MDO_RAGE_LEVEL] < 8)
-                continue nextMonster;
-
-              // Unsure. Seems to be some kind of wandering algorithm.
-              if (monsterData[monsterIndex * 16 + MDO_UNKNOWN_8] != 12) {
-                xPlayerDist = (monsterData[monsterIndex * 16 + MDO_UNKNOWN_8]) % 5 - 2;
-                yPlayerDist = (monsterData[monsterIndex * 16 + MDO_UNKNOWN_8]) / 5 - 2;
-                if (random.nextInt(10) == 0) {
-                  monsterData[monsterIndex * 16 + MDO_UNKNOWN_8] = 12;
-                }
-              }
-
-              // Move generally toward the player.
-              double xxd = Math.sqrt(xPlayerDist * xPlayerDist);
-              double yyd = Math.sqrt(yPlayerDist * yPlayerDist);
-              if (random.nextInt(1024) / 1024.0 < yyd / xxd) {
-                if (yPlayerDist < 0)
-                  ya--;
-                if (yPlayerDist > 0)
-                  ya++;
-              }
-              if (random.nextInt(1024) / 1024.0 < xxd / yyd) {
-                if (xPlayerDist < 0)
-                  xa--;
-                if (xPlayerDist > 0)
-                  xa++;
-              }
-
-              // Mark that the monster moved so we can update pixels later.
-              moved = true;
-
-              // Pick the right sprite frame depending on direction.
-              double dir = Math.atan2(yPlayerDist, xPlayerDist);
-              monsterData[monsterIndex * 16 + MDO_DIRECTION] = (((int) (dir
-                  / (Math.PI * 2) * 16 + 4.5 + 16)) & 15);
-            }
-
-            // I think this is a way to move fast but not go through walls.
-            // Start by moving a small amount, test for wall hit, if successful
-            // try moving more.
-            ya *= i;
-            xa *= 1 - i;
-
-            // Did the monster move?
-            if (xa != 0 || ya != 0) {
-              // Restore the map pixel.
-              maps[xPos + yPos * 1024] = monsterData[monsterIndex * 16
-                  + MDO_SAVED_MAP_PIXEL];
-
-              // Did the monster bonk into a wall?
-              for (int xx = xPos + xa - 3; xx <= xPos + xa + 3; xx++) {
-                for (int yy = yPos + ya - 3; yy <= yPos + ya + 3; yy++) {
-                  if (maps[xx + yy * 1024] >= 0xfffffe) {
-                    // Yes. Put back the pixel.
-                    maps[xPos + yPos * 1024] = 0xfffffe;
-                    // Try wandering in a different direction.
-                    monsterData[monsterIndex * 16 + MDO_UNKNOWN_8] = random
-                        .nextInt(25);
-                    // And then move all over again.
-                    continue dirLoop;
-                  }
-                }
-              }
-
-              // Move the monster.
-              moved = true;
-              monsterData[monsterIndex * 16 + MDO_X] += xa;
-              monsterData[monsterIndex * 16 + MDO_Y] += ya;
-
-              // Save the pixel.
-              monsterData[monsterIndex * 16 + MDO_SAVED_MAP_PIXEL] = maps[(xPos + xa)
-                  + (yPos + ya) * 1024];
-
-              // Draw the monster's head.
-              maps[(xPos + xa) + (yPos + ya) * 1024] = 0xfffffe;
-            }
-          }
-          if (moved) {
-            // Shuffle to next frame in sprite.
-            monsterData[monsterIndex * 16 + MDO_SPRITE_FRAME]++;
+      // Did the monster bonk into a wall?
+      for (int xx = position.x + movement.x - 3; xx <= position.x + movement.x
+          + 3; xx++) {
+        for (int yy = position.y + movement.y - 3; yy <= position.y
+            + movement.y + 3; yy++) {
+          if (maps[xx + yy * 1024] >= 0xfffffe) {
+            // Yes. Put back the pixel.
+            maps[position.x + position.y * 1024] = 0xfffffe;
+            // Try wandering in a different direction.
+            monsterData[monsterIndex * 16 + MDO_UNKNOWN_8] = random.nextInt(25);
+            return moved;
           }
         }
       }
 
-      // Did the player press the fire button?
-      if (shoot) {
-        // Is the ammo used up?
-        if (ammo >= 220) {
-          // Yes. Longer delay.
-          shootDelay = 2;
-          // Require trigger release.
-          k[1] = false;
-        } else {
-          // Fast fire.
-          shootDelay = 1;
-          // Use up bullets.
-          ammo += 4;
-        }
+      // Move the monster.
+      moved = true;
+      monsterData[monsterIndex * 16 + MDO_X] += movement.x;
+      monsterData[monsterIndex * 16 + MDO_Y] += movement.y;
 
-        // Whoever's closest gets hit. But how do we know direction was right?
-        if (closestHit > 0) {
-          monsterData[closestHit * 16 + MDO_DAMAGE_TAKEN] = 1;
-          monsterData[closestHit * 16 + MDO_RAGE_LEVEL] = 127;
-        }
+      // Save the pixel.
+      monsterData[monsterIndex * 16 + MDO_SAVED_MAP_PIXEL] = maps[(position.x + movement.x)
+          + (position.y + movement.y) * 1024];
 
-        // Draw the trace.
-        int glow = 0;
-        for (int j = closestHitDist; j >= 0; j--) {
-          // Calculate pixel position.
-          int xm = +(int) (cos * j) + 120;
-          int ym = -(int) (sin * j) + 120;
+      // Draw the monster's head.
+      maps[(position.x + movement.x) + (position.y + movement.y) * 1024] = 0xfffffe;
+    }
 
-          // Are we still within the view?
-          if (xm > 0 && ym > 0 && xm < 240 && ym < 240) {
+    return moved;
+  }
 
-            // Every so often, draw a white dot and renew the glow. This gives a
-            // cool randomized effect that looks like spitting sparks.
-            if (random.nextInt(20) == 0 || j == closestHitDist) {
-              pixels[xm + ym * 240] = 0xffffff;
-              glow = 200;
-            }
-            
-            // Either way, brighten up the path according to the current glow.
-            lightmap[xm + ym * 240] += glow * (255 - lightmap[xm + ym * 240])
-                / 255;
-          }
-          
-          // Fade the glow.
-          glow = glow * 20 / 21;
-        }
+  private boolean didMove(Point movement) {
+    return movement.x != 0 || movement.y != 0;
+  }
 
-        // Did the bullet hit within view?
-        if (closestHitDist < 120) {
-          closestHitDist -= 3;
-          int xx = (int) (120 + cos * closestHitDist);
-          int yy = (int) (120 - sin * closestHitDist);
+  private boolean isPlayer(int monsterIndex) {
+    return monsterIndex == 0;
+  }
 
-          // Make a great big flash where the bullet hit.
-          for (int x = -12; x <= 12; x++) {
-            for (int y = -12; y <= 12; y++) {
-              int xd = xx + x;
-              int yd = yy + y;
-              if (xd >= 0 && yd >= 0 && xd < 240 && yd < 240) {
-                lightmap[xd + yd * 240] += 2000 / (x * x + y * y + 10)
-                    * (255 - lightmap[xd + yd * 240]) / 255;
-              }
-            }
+  private void doShot(int[] monsterData, int[] lightmap, double playerDir,
+      double cos, double sin, int closestHitDist, int closestHit) {
+    {
+      // Is the ammo used up?
+      if (ammo >= 220) {
+        // Yes. Longer delay.
+        shootDelay = 2;
+        // Require trigger release.
+        k[1] = false;
+      } else {
+        // Fast fire.
+        shootDelay = 1;
+        // Use up bullets.
+        ammo += 4;
+      }
+
+      // Whoever's closest gets hit. But how do we know direction was right?
+      if (closestHit > 0) {
+        monsterData[closestHit * 16 + MDO_DAMAGE_TAKEN] = 1;
+        monsterData[closestHit * 16 + MDO_RAGE_LEVEL] = 127;
+      }
+
+      // Draw the trace.
+      int glow = 0;
+      for (int j = closestHitDist; j >= 0; j--) {
+        // Calculate pixel position.
+        int xm = +(int) (cos * j) + 120;
+        int ym = -(int) (sin * j) + 120;
+
+        // Are we still within the view?
+        if (xm > 0 && ym > 0 && xm < 240 && ym < 240) {
+
+          // Every so often, draw a white dot and renew the glow. This gives a
+          // cool randomized effect that looks like spitting sparks.
+          if (random.nextInt(20) == 0 || j == closestHitDist) {
+            pixels[xm + ym * 240] = 0xffffff;
+            glow = 200;
           }
 
-          // And draw a bunch of debris.
-          for (int i = 0; i < 10; i++) {
-            double pow = random.nextInt(100) * random.nextInt(100) * 8.0
-                / 10000;
-            double dir = (random.nextInt(100) - random.nextInt(100)) / 100.0;
-            int xd = (int) (xx - Math.cos(playerDir + dir) * pow)
-                + random.nextInt(4) - random.nextInt(4);
-            int yd = (int) (yy - Math.sin(playerDir + dir) * pow)
-                + random.nextInt(4) - random.nextInt(4);
+          // Either way, brighten up the path according to the current glow.
+          lightmap[xm + ym * 240] += glow * (255 - lightmap[xm + ym * 240])
+              / 255;
+        }
+
+        // Fade the glow.
+        glow = glow * 20 / 21;
+      }
+
+      // Did the bullet hit within view?
+      if (closestHitDist < 120) {
+        closestHitDist -= 3;
+        int xx = (int) (120 + cos * closestHitDist);
+        int yy = (int) (120 - sin * closestHitDist);
+
+        // Make a great big flash where the bullet hit.
+        for (int x = -12; x <= 12; x++) {
+          for (int y = -12; y <= 12; y++) {
+            int xd = xx + x;
+            int yd = yy + y;
             if (xd >= 0 && yd >= 0 && xd < 240 && yd < 240) {
-              if (closestHit > 0) {
-                pixels[xd + yd * 240] = 0xff0000;
-              } else {
-                pixels[xd + yd * 240] = 0xcacaca;
-              }
+              lightmap[xd + yd * 240] += 2000 / (x * x + y * y + 10)
+                  * (255 - lightmap[xd + yd * 240]) / 255;
+            }
+          }
+        }
+
+        // And draw a bunch of debris.
+        for (int i = 0; i < 10; i++) {
+          double pow = random.nextInt(100) * random.nextInt(100) * 8.0 / 10000;
+          double dir = (random.nextInt(100) - random.nextInt(100)) / 100.0;
+          int xd = (int) (xx - Math.cos(playerDir + dir) * pow)
+              + random.nextInt(4) - random.nextInt(4);
+          int yd = (int) (yy - Math.sin(playerDir + dir) * pow)
+              + random.nextInt(4) - random.nextInt(4);
+          if (xd >= 0 && yd >= 0 && xd < 240 && yd < 240) {
+            if (closestHit > 0) {
+              pixels[xd + yd * 240] = 0xff0000;
+            } else {
+              pixels[xd + yd * 240] = 0xcacaca;
             }
           }
         }
