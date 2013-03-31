@@ -116,18 +116,15 @@ public class Game extends Frame {
 
     generateSprites();
 
-    while (true) {
-      session = new Session();
-      xWin0 = 0;
-      yWin0 = 0;
-      xWin1 = 0;
-      yWin1 = 0;
+    session = new Session();
+    xWin0 = 0;
+    yWin0 = 0;
+    xWin1 = 0;
+    yWin1 = 0;
 
-      while (true) {
-        System.out.println("Playing full game...");
-        session.restart();
-        playUntilPlayerDies();
-      }
+    while (true) {
+      session.restart();
+      playUntilPlayerDies();
     }
   }
 
@@ -157,11 +154,12 @@ public class Game extends Frame {
       damage = 20;
       ammo = 20;
       clips = 20;
+      System.out.println("Entering attract...");
     }
 
     public void winLevel() {
       ++level;
-      System.out.println("Playing level " + level + "...");
+      System.out.println("Advancing to level " + level + "...");
     }
 
     public void drawLevel(Graphics ogr) {
@@ -175,6 +173,7 @@ public class Game extends Frame {
     public void markGameStarted() {
       score = 0;
       gameStarted = true;
+      System.out.println("Starting new game...");
     }
 
     public void advanceRushTime(Random random) {
@@ -190,7 +189,6 @@ public class Game extends Frame {
     int mouseEvent;
 
     public UserInput() {
-
     }
 
     private void handleKeyboardInput(Point movement) {
@@ -204,7 +202,6 @@ public class Game extends Frame {
       if (k[KeyEvent.VK_S])
         movement.y++;
     }
-
   }
 
   private void playUntilPlayerDies() {
