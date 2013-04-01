@@ -171,26 +171,6 @@ public class Game extends Frame {
     }
   }
 
-  static class UserInput {
-    private boolean[] k = new boolean[32767];
-    int mouseEvent;
-
-    public UserInput() {
-    }
-
-    private void handleKeyboardInput(Point movement) {
-      // Move the player according to keyboard state.
-      if (k[KeyEvent.VK_A])
-        movement.x--;
-      if (k[KeyEvent.VK_D])
-        movement.x++;
-      if (k[KeyEvent.VK_W])
-        movement.y--;
-      if (k[KeyEvent.VK_S])
-        movement.y++;
-    }
-  }
-
   private void playUntilPlayerDies() {
     while (true) {
       int tick = 0;
@@ -231,11 +211,11 @@ public class Game extends Frame {
               camera, closestHitDist);
 
           if (session.damage >= 220) {
-            userInput.k[1] = false;
+            userInput.setTriggerPressed(false);
             session.hurtTime = 255;
             return;
           }
-          if (userInput.k[KeyEvent.VK_R] && session.ammo > 20
+          if (userInput.isReloadPressed() && session.ammo > 20
               && session.clips < 220) {
             session.shootDelay = 30;
             session.ammo = 20;
@@ -256,9 +236,9 @@ public class Game extends Frame {
         ogr.drawString("" + session.score, 4, 232);
         if (!session.gameStarted) {
           ogr.drawString("Left 4k Dead", 80, 70);
-          if (userInput.k[1] && session.hurtTime == 0) {
+          if (userInput.isTriggerPressed() && session.hurtTime == 0) {
             session.markGameStarted();
-            userInput.k[1] = false;
+            userInput.setTriggerPressed(false);
           }
         } else if (tick < 60) {
           session.drawLevel(ogr);
@@ -380,7 +360,7 @@ public class Game extends Frame {
   }
 
   private boolean didPlayerPressFire() {
-    return session.shootDelay-- < 0 && userInput.k[1];
+    return session.shootDelay-- < 0 && userInput.isTriggerPressed();
   }
 
   private int processMonster(int tick, int[] monsterData, double playerDir,
@@ -695,7 +675,7 @@ public class Game extends Frame {
       // Yes. Longer delay.
       session.shootDelay = 2;
       // Require trigger release.
-      userInput.k[1] = false;
+      userInput.setTriggerPressed(false);
     } else {
       // Fast fire.
       session.shootDelay = 1;
@@ -1112,12 +1092,12 @@ public class Game extends Frame {
     case KeyEvent.KEY_PRESSED:
       down = true;
     case KeyEvent.KEY_RELEASED:
-      userInput.k[((KeyEvent) e).getKeyCode()] = down;
+      userInput.setIsPressed(((KeyEvent) e).getKeyCode(), down);
       break;
     case MouseEvent.MOUSE_PRESSED:
       down = true;
     case MouseEvent.MOUSE_RELEASED:
-      userInput.k[((MouseEvent) e).getButton()] = down;
+      userInput.setTriggerPressed(down);
     case MouseEvent.MOUSE_MOVED:
     case MouseEvent.MOUSE_DRAGGED:
       userInput.mouseEvent = ((MouseEvent) e).getX() / 2
