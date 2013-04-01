@@ -24,18 +24,15 @@ public class Game extends Frame {
 
   private static final int PIXEL_NORMAL_WALL = 0xFF8052;
   private static final int PIXEL_OUTER_WALL = 0xFFFEFE;
-  private static final int PIXEL_INNER_WALL = 0xFFFFFF;
-  private static final int PIXEL_MASK_WALL = 0xff0000;
-  private static final int PIXEL_MONSTER_HEAD = 0xFFFFFE;
   private static final int PIXEL_MASK_END_ROOM = 0xff0000;
 
   private BufferedImage image;
   private Graphics ogr;
 
   private Random random;
+  private Map map;
   private int[] pixels;
   private int[] sprites;
-  private int[] maps;
   private int xWin0;
   private int yWin0;
   private int xWin1;
@@ -90,15 +87,6 @@ public class Game extends Frame {
   }
 
   public void windowDeactivated(WindowEvent e) {
-  }
-
-  static class Point {
-    public Point(int x, int y) {
-      this.x = x;
-      this.y = y;
-    }
-
-    int x, y;
   }
 
   public Game() {
@@ -181,11 +169,10 @@ public class Game extends Frame {
         rushTime = -random.nextInt(2000);
       }
     }
-
   }
 
   static class UserInput {
-    boolean[] k = new boolean[32767];
+    private boolean[] k = new boolean[32767];
     int mouseEvent;
 
     public UserInput() {
@@ -236,7 +223,7 @@ public class Game extends Frame {
           Point camera = new Point(monsterData[MDO_X], monsterData[MDO_Y]);
 
           generateLightmap(tick, lightmap, brightness, playerDir, camera);
-          drawMapView(camera);
+          map.copyView(camera, 240, 240, pixels);
 
           int closestHitDist = calculateClosestHitDistance(cos, sin, camera);
 
@@ -295,22 +282,11 @@ public class Game extends Frame {
       int xm = camera.x + (int) (cos * j / 2);
       int ym = camera.y - (int) (sin * j / 2);
 
-      // 0xffffff is the color of character clothes.
-      if (maps[(xm + ym * 1024) & (1024 * 1024 - 1)] == 0xffffff)
+      if (map.isMonsterSafe(xm, ym))
         break;
       closestHitDist = j / 2;
     }
     return closestHitDist;
-  }
-
-  private void drawMapView(Point camera) {
-    for (int y = 0; y < 240; y++) {
-      int xm = camera.x - 120;
-      int ym = y + camera.y - 120;
-      for (int x = 0; x < 240; x++) {
-        pixels[x + y * 240] = maps[(xm + x + ym * 1024) & (1024 * 1024 - 1)];
-      }
-    }
   }
 
   private void generateLightmap(int tick, int[] lightmap, int[] brightness,
@@ -366,7 +342,7 @@ public class Game extends Frame {
         int ym = yy + camera.y - 120;
 
         // Stop the light if it hits a wall.
-        if (maps[(xm + ym * 1024) & (1024 * 1024 - 1)] == 0xffffff)
+        if (map.isWallSafe(xm, ym))
           break;
 
         // Do an approximate distance calculation. I'm not sure why this
@@ -433,7 +409,7 @@ public class Game extends Frame {
       // 2. Any of these is true: a. It's an early-numbered monster, OR b.
       // It's rush time, OR c. It's the first tick of the game and it's one
       // of the last 16 monsters.
-      if (maps[xPos + yPos * 1024] < PIXEL_MONSTER_HEAD
+      if (!map.isMonsterHead(xPos, yPos)
           && (monsterIndex <= 128 || session.rushTime > 0 || (isSpecialMonster(monsterIndex) && tick == 1))) {
         placeNewMonster(monsterData, monsterIndex, xPos, yPos);
       } else {
@@ -575,8 +551,8 @@ public class Game extends Frame {
     // Basically, this keeps the player reasonably surrounded with
     // monsters waiting to come to life without wasting too many
     // resources on idle ones.
-    maps[xPos + yPos * 1024] = monsterData[monsterIndex * 16
-        + MDO_SAVED_MAP_PIXEL];
+    map.setElement(xPos, yPos, monsterData[monsterIndex * 16
+        + MDO_SAVED_MAP_PIXEL]);
     monsterData[monsterIndex * 16 + MDO_ACTIVITY_LEVEL] = 0;
     return closestHitDist;
   }
@@ -594,8 +570,8 @@ public class Game extends Frame {
     // Yes. Kill it.
 
     // Replace the map pixel.
-    maps[xPos + yPos * 1024] = monsterData[monsterIndex * 16
-        + MDO_SAVED_MAP_PIXEL];
+    map.setElement(xPos, yPos, monsterData[monsterIndex * 16
+        + MDO_SAVED_MAP_PIXEL]);
     // Mark monster inactive.
     monsterData[monsterIndex * 16 + MDO_ACTIVITY_LEVEL] = 0;
     session.bonusTime = 120;
@@ -670,17 +646,17 @@ public class Game extends Frame {
 
     if (didMove(movement)) {
       // Restore the map pixel.
-      maps[position.x + position.y * 1024] = monsterData[monsterIndex * 16
-          + MDO_SAVED_MAP_PIXEL];
+      map.setElement(position.x, position.y, monsterData[monsterIndex * 16
+          + MDO_SAVED_MAP_PIXEL]);
 
       // Did the monster bonk into a wall?
       for (int xx = position.x + movement.x - 3; xx <= position.x + movement.x
           + 3; xx++) {
         for (int yy = position.y + movement.y - 3; yy <= position.y
             + movement.y + 3; yy++) {
-          if (maps[xx + yy * 1024] >= 0xfffffe) {
+          if (map.isWall(xx, yy)) {
             // Yes. Put back the pixel.
-            maps[position.x + position.y * 1024] = 0xfffffe;
+            map.setElement(position.x, position.y, 0xfffffe);
             // Try wandering in a different direction.
             monsterData[monsterIndex * 16 + MDO_UNKNOWN_8] = random.nextInt(25);
             return moved;
@@ -694,11 +670,11 @@ public class Game extends Frame {
       monsterData[monsterIndex * 16 + MDO_Y] += movement.y;
 
       // Save the pixel.
-      monsterData[monsterIndex * 16 + MDO_SAVED_MAP_PIXEL] = maps[(position.x + movement.x)
-          + (position.y + movement.y) * 1024];
+      monsterData[monsterIndex * 16 + MDO_SAVED_MAP_PIXEL] = map.getElement(
+          position.x + movement.x, position.y + movement.y);
 
       // Draw the monster's head.
-      maps[(position.x + movement.x) + (position.y + movement.y) * 1024] = 0xfffffe;
+      map.setElement(position.x + movement.x, position.y + movement.y, 0xfffffe);
     }
 
     return moved;
@@ -815,10 +791,10 @@ public class Game extends Frame {
     monsterData[m * 16 + MDO_Y] = yPos;
 
     // Remember this map pixel.
-    monsterData[m * 16 + MDO_SAVED_MAP_PIXEL] = maps[xPos + yPos * 1024];
+    monsterData[m * 16 + MDO_SAVED_MAP_PIXEL] = map.getElement(xPos, yPos);
 
     // Mark the map as having a monster here.
-    maps[xPos + yPos * 1024] = PIXEL_MONSTER_HEAD;
+    map.setMonsterHead(xPos, yPos);
 
     // Mark monster as idle or attacking.
     monsterData[m * 16 + MDO_RAGE_LEVEL] = (session.rushTime > 0 || random
@@ -847,7 +823,7 @@ public class Game extends Frame {
       rot = Math.PI * 2; // All the way around
       amount = 60; // lots of blood
       poww = 16;
-      maps[(xPos) + (yPos) * 1024] = 0xa00000; // Red
+      map.setElement(xPos, yPos, 0xa00000); // Red
       monsterData[m * 16 + MDO_ACTIVITY_LEVEL] = 0; // Kill monster
       session.addScoreForMonsterDeath();
     }
@@ -865,15 +841,14 @@ public class Game extends Frame {
       bloodLoop: for (int j = 2; j < pow; j++) {
         int xd = (int) (xPos + xdd * j / pow);
         int yd = (int) (yPos + ydd * j / pow);
-        int pp = ((xd) + (yd) * 1024) & (1024 * 1024 - 1);
 
         // If the blood encounters a wall, stop spraying.
-        if (maps[pp] >= 0xff0000)
+        if (map.isAnyWallSafe(xd, yd))
           break bloodLoop;
 
         // Occasionally splat some blood and darken it.
         if (random.nextInt(2) != 0) {
-          maps[pp] = col << 16;
+          map.setElementSafe(xd, yd, col << 16);
           col = col * 8 / 9;
         }
       }
@@ -929,27 +904,25 @@ public class Game extends Frame {
   }
 
   private void generateLevel(int[] monsterData) {
-    maps = new int[1024 * 1024];
+    map = new Map(1024, 1024);
 
     // Make the levels random but repeatable.
     random = new Random(4329 + session.level);
 
     // Draw the floor of the level with an uneven green color.
     // Put a wall around the perimeter.
-    int i = 0;
     for (int y = 0; y < 1024; y++) {
       for (int x = 0; x < 1024; x++) {
         int br = random.nextInt(32) + 112;
-        maps[i] = (br / 3) << 16 | (br) << 8;
+        map.setElement(x, y, (br / 3) << 16 | (br) << 8);
         if (x < 4 || y < 4 || x >= 1020 || y >= 1020) {
-          maps[i] = PIXEL_OUTER_WALL;
+          map.setElement(x, y, PIXEL_OUTER_WALL);
         }
-        i++;
       }
     }
 
     // Create 70 rooms. Put the player in the 69th, and make the 70th red.
-    for (i = 0; i < ROOM_COUNT; i++) {
+    for (int i = 0; i < ROOM_COUNT; i++) {
       // Create a room that's possibly as big as the level, whose coordinates
       // are clamped to the nearest multiple of 16.
       int w = random.nextInt(8) + 2;
@@ -1006,17 +979,17 @@ public class Game extends Frame {
             }
 
             // Grayish concrete floor
-            maps[x + y * 1024] = (br * 3 / 3) << 16 | (br * 4 / 4) << 8
-                | (br * 4 / 4);
+            map.setElement(x, y, (br * 3 / 3) << 16 | (br * 4 / 4) << 8
+                | (br * 4 / 4));
           } else {
             // No, we're not. Draw the wall.
             // Orange wall border
-            maps[x + y * 1024] = PIXEL_NORMAL_WALL;
+            map.setElement(x, y, PIXEL_NORMAL_WALL);
           }
 
           if (i == ROOM_COUNT - 1) {
             // Give this room a red tint.
-            maps[x + y * 1024] &= PIXEL_MASK_END_ROOM;
+            map.maskElement(x, y, PIXEL_MASK_END_ROOM);
           }
         }
       }
@@ -1041,8 +1014,8 @@ public class Game extends Frame {
           for (int x = xGap; x < xGap + ww; x++) {
             // A slightly darker color represents the exit.
             int br = random.nextInt(32) + 112 - 64;
-            maps[x + y * 1024] = (br * 3 / 3) << 16 | (br * 4 / 4) << 8
-                | (br * 4 / 4);
+            map.setElement(x, y, (br * 3 / 3) << 16 | (br * 4 / 4) << 8
+                | (br * 4 / 4));
           }
         }
       }
@@ -1054,12 +1027,12 @@ public class Game extends Frame {
       inloop: for (int x = 1; x < 1024 - 1; x++) {
         for (int xx = x - 1; xx <= x + 1; xx++) {
           for (int yy = y - 1; yy <= y + 1; yy++) {
-            if (maps[xx + yy * 1024] < PIXEL_MASK_WALL) {
+            if (!map.isAnyWall(xx, yy)) {
               continue inloop;
             }
           }
         }
-        maps[x + y * 1024] = PIXEL_INNER_WALL;
+        map.setInnerWall(x, y);
       }
     }
   }
