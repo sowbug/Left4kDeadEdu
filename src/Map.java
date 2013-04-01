@@ -2,6 +2,10 @@ class Map {
   private static final int PIXEL_MASK_WALL = 0xff0000;
   private static final int PIXEL_MONSTER_HEAD = 0xFFFFFE;
   private static final int PIXEL_INNER_WALL = 0xFFFFFF;
+  private static final int PIXEL_BORDER_WALL = 0xFF8052;
+  private static final int PIXEL_OUTER_WALL = 0xFFFEFE;
+  private static final int PIXEL_MASK_END_ROOM = 0xff0000;
+
 
   private final int width, height;
   private final int[] elements;
@@ -28,8 +32,9 @@ class Map {
     elements[(x + y * width) & (width * height - 1)] = pixel;
   }
 
-  void maskElement(int x, int y, int pixelMask) {
-    elements[x + y * width] &= pixelMask;
+  void maskEndRoom(int x, int y) {
+    // Give the end room a red tint.
+    elements[x + y * width] &= PIXEL_MASK_END_ROOM;
   }
 
   boolean isWall(int x, int y) {
@@ -55,6 +60,14 @@ class Map {
 
   void setInnerWall(int x, int y) {
     setElement(x, y, PIXEL_INNER_WALL);
+  }
+
+  void setBorderWall(int x, int y) {
+    setElement(x, y, PIXEL_BORDER_WALL);
+  }
+
+  void setOuterWall(int x, int y) {
+    setElement(x, y, PIXEL_OUTER_WALL);
   }
 
   boolean isAnyWall(int x, int y) {
