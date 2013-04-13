@@ -74,99 +74,101 @@ public class Left4kDead extends Frame {
   public void run() {
     while (true) {
       game.restart();
+      runGameLoop();
+    }
+  }
+
+  private void runGameLoop() {
+    while (true) {
+      game.winLevel();
+      Point endRoomTopLeft = new Point(0, 0);
+      Point endRoomBottomRight = new Point(0, 0);
+
+      // Make the levels random but repeatable.
+      random = new Random(4329 + game.level);
+
+      map = new Map(1024, 1024);
+
+      Point startPoint = new Point(0, 0);
+      map.generate(random, startPoint, endRoomTopLeft, endRoomBottomRight);
+
+      Monster[] monsters = new Monster[MAX_MONSTERS];
+      for (int i = 0; i < MAX_MONSTERS; ++i) {
+        monsters[i] = new Monster(i);
+      }
+
+      // Place the player (monsterData[0-15]) in the center of the start room.
+      monsters[0].position = startPoint;
+      monsters[0].savedMapPixel = 0x808080;
+      monsters[0].activity = 1;
+
+      long lastTime = System.nanoTime();
+
+      Viewport viewport = new Viewport(VIEWPORT_WIDTH, VIEWPORT_HEIGHT,
+          SCREEN_WIDTH, SCREEN_HEIGHT, getGraphics());
+
+      double playerDir = 0;
+
       while (true) {
-        game.winLevel();
-        Point endRoomTopLeft = new Point(0, 0);
-        Point endRoomBottomRight = new Point(0, 0);
+        if (game.gameStarted) {
+          game.tick++;
+          game.advanceRushTime(random);
 
-        // Make the levels random but repeatable.
-        random = new Random(4329 + game.level);
+          int mouse = userInput.mouseEvent;
+          playerDir = Math.atan2(mouse / VIEWPORT_WIDTH - VIEWPORT_WIDTH_HALF,
+              mouse % VIEWPORT_HEIGHT - VIEWPORT_HEIGHT_HALF);
 
-        map = new Map(1024, 1024);
+          double shootDir = playerDir
+              + (random.nextInt(100) - random.nextInt(100)) / 100.0 * 0.2;
+          double cos = Math.cos(-shootDir);
+          double sin = Math.sin(-shootDir);
 
-        Point startPoint = new Point(0, 0);
-        map.generate(random, startPoint, endRoomTopLeft, endRoomBottomRight);
+          Point camera = monsters[0].position;
 
-        Monster[] monsters = new Monster[MAX_MONSTERS];
-        for (int i = 0; i < MAX_MONSTERS; ++i) {
-          monsters[i] = new Monster(i);
-        }
+          viewport.prepareFrame(game, map, camera, playerDir);
 
-        // Place the player (monsterData[0-15]) in the center of the start room.
-        monsters[0].position = startPoint;
-        monsters[0].savedMapPixel = 0x808080;
-        monsters[0].activity = 1;
+          resetClosestHitDistance(cos, sin, camera);
+          processMonsters(viewport, game.tick, monsters, playerDir, cos, sin,
+              camera);
 
-        long lastTime = System.nanoTime();
-
-        Viewport viewport = new Viewport(VIEWPORT_WIDTH, VIEWPORT_HEIGHT,
-            SCREEN_WIDTH, SCREEN_HEIGHT, getGraphics());
-
-        double playerDir = 0;
-
-        while (true) {
-          if (game.gameStarted) {
-            game.tick++;
-            game.advanceRushTime(random);
-
-            int mouse = userInput.mouseEvent;
-            playerDir = Math.atan2(
-                mouse / VIEWPORT_WIDTH - VIEWPORT_WIDTH_HALF, mouse
-                    % VIEWPORT_HEIGHT - VIEWPORT_HEIGHT_HALF);
-
-            double shootDir = playerDir
-                + (random.nextInt(100) - random.nextInt(100)) / 100.0 * 0.2;
-            double cos = Math.cos(-shootDir);
-            double sin = Math.sin(-shootDir);
-
-            Point camera = monsters[0].position;
-
-            viewport.prepareFrame(game, map, camera, playerDir);
-
-            resetClosestHitDistance(cos, sin, camera);
-            processMonsters(viewport, game.tick, monsters, playerDir, cos, sin,
-                camera);
-
-            if (didPlayerPressFire()) {
-              boolean wasMonsterHit = closestHit > 0;
-              doShot(viewport, wasMonsterHit, playerDir, cos, sin);
-              if (wasMonsterHit) {
-                monsters[closestHit].damage = 1;
-                monsters[closestHit].rage = 127;
-              }
-            }
-
-            if (game.damage >= 220) {
-              userInput.setTriggerPressed(false);
-              game.hurtTime = 255;
-              return;
-            }
-            if (userInput.isReloadPressed() && game.ammo > 20
-                && game.clips < 220) {
-              game.shootDelay = 30;
-              game.ammo = 20;
-              game.clips += 10;
-            }
-
-            if (isPlayerInEndRoom(endRoomTopLeft, endRoomBottomRight, camera)) {
-              System.out.println("You made it!");
-              break;
+          if (didPlayerPressFire()) {
+            boolean wasMonsterHit = closestHit > 0;
+            doShot(viewport, wasMonsterHit, playerDir, cos, sin);
+            if (wasMonsterHit) {
+              monsters[closestHit].damage = 1;
+              monsters[closestHit].rage = 127;
             }
           }
 
-          game.bonusTime = game.bonusTime * 8 / 9;
-          game.hurtTime /= 2;
-
-          viewport.completeFrame(game, userInput);
-
-          do {
-            Thread.yield();
-          } while (System.nanoTime() - lastTime < 0);
-          if (!isActive())
+          if (game.damage >= 220) {
+            userInput.setTriggerPressed(false);
+            game.hurtTime = 255;
             return;
+          }
+          if (userInput.isReloadPressed() && game.ammo > 20 && game.clips < 220) {
+            game.shootDelay = 30;
+            game.ammo = 20;
+            game.clips += 10;
+          }
 
-          lastTime += (1000000000 / 30);
+          if (isPlayerInEndRoom(endRoomTopLeft, endRoomBottomRight, camera)) {
+            System.out.println("You made it!");
+            break;
+          }
         }
+
+        game.bonusTime = game.bonusTime * 8 / 9;
+        game.hurtTime /= 2;
+
+        viewport.completeFrame(game, userInput);
+
+        do {
+          Thread.yield();
+        } while (System.nanoTime() - lastTime < 0);
+        if (!isActive())
+          return;
+
+        lastTime += (1000000000 / 30);
       }
     }
   }
