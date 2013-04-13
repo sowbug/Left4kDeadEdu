@@ -15,6 +15,16 @@ import java.awt.image.DataBufferInt;
 import java.util.Random;
 
 public class Game extends Frame {
+  private static final int VIEWPORT_WIDTH = 240;
+  private static final int VIEWPORT_WIDTH_HALF = VIEWPORT_WIDTH / 2;
+
+  private static final int VIEWPORT_HEIGHT = 240;
+  private static final int VIEWPORT_HEIGHT_HALF = VIEWPORT_HEIGHT / 2;
+
+  private static final int SCREEN_WIDTH = VIEWPORT_WIDTH * 2;
+
+  private static final int SCREEN_HEIGHT = VIEWPORT_HEIGHT * 2;
+
   private static final long serialVersionUID = 2099860140043826270L;
 
   private static final int MDO_X = 0;
@@ -43,7 +53,7 @@ public class Game extends Frame {
 
   public static void main(String[] args) {
     Game game = new Game();
-    game.setSize(480, 480);
+    game.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
     game.setVisible(true);
     game.setLayout(new FlowLayout());
     game.run();
@@ -79,7 +89,8 @@ public class Game extends Frame {
   }
 
   public void run() {
-    image = new BufferedImage(240, 240, BufferedImage.TYPE_INT_RGB);
+    image = new BufferedImage(VIEWPORT_WIDTH, VIEWPORT_HEIGHT,
+        BufferedImage.TYPE_INT_RGB);
     ogr = image.getGraphics();
     random = new Random();
     pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
@@ -158,7 +169,7 @@ public class Game extends Frame {
 
       long lastTime = System.nanoTime();
 
-      int[] lightmap = new int[240 * 240];
+      int[] lightmap = new int[VIEWPORT_WIDTH * VIEWPORT_HEIGHT];
       int[] brightness = generateBrightness();
 
       double playerDir = 0;
@@ -171,7 +182,8 @@ public class Game extends Frame {
           session.advanceRushTime(random);
 
           int mouse = userInput.mouseEvent;
-          playerDir = Math.atan2(mouse / 240 - 120, mouse % 240 - 120);
+          playerDir = Math.atan2(mouse / VIEWPORT_WIDTH - VIEWPORT_WIDTH_HALF,
+              mouse % VIEWPORT_HEIGHT - VIEWPORT_HEIGHT_HALF);
 
           double shootDir = playerDir
               + (random.nextInt(100) - random.nextInt(100)) / 100.0 * 0.2;
@@ -181,7 +193,7 @@ public class Game extends Frame {
           Point camera = new Point(monsterData[MDO_X], monsterData[MDO_Y]);
 
           generateLightmap(tick, lightmap, brightness, playerDir, camera);
-          map.copyView(camera, 240, 240, pixels);
+          map.copyView(camera, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, pixels);
 
           resetClosestHitDistance(cos, sin, camera);
           processMonsters(tick, monsterData, lightmap, playerDir, cos, sin,
@@ -230,7 +242,8 @@ public class Game extends Frame {
           session.drawLevel(ogr);
         }
 
-        sg.drawImage(image, 0, 0, 480, 480, 0, 0, 240, 240, null);
+        sg.drawImage(image, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0,
+            VIEWPORT_WIDTH, VIEWPORT_HEIGHT, null);
         do {
           Thread.yield();
         } while (System.nanoTime() - lastTime < 0);
@@ -250,7 +263,7 @@ public class Game extends Frame {
 
   private void resetClosestHitDistance(double cos, double sin, Point camera) {
     int distance = 0;
-    for (int j = 0; j < 250; j++) {
+    for (int j = 0; j < VIEWPORT_WIDTH + 10; j++) {
       int xm = camera.x + (int) (cos * j / 2);
       int ym = camera.y - (int) (sin * j / 2);
 
@@ -264,10 +277,11 @@ public class Game extends Frame {
 
   private void generateLightmap(int tick, int[] lightmap, int[] brightness,
       double playerDir, Point camera) {
-    for (int i = 0; i < 960; i++) {
+    for (int i = 0; i < VIEWPORT_WIDTH * 4; i++) {
       // Calculate a point along the outer wall of the view.
-      int xt = i % 240 - 120;
-      int yt = (i / 240 % 2) * 239 - 120;
+      int xt = i % VIEWPORT_WIDTH - VIEWPORT_WIDTH_HALF;
+      int yt = (i / VIEWPORT_HEIGHT % 2) * (VIEWPORT_HEIGHT - 1)
+          - VIEWPORT_HEIGHT_HALF;
 
       if (i >= 480) {
         int tmp = xt;
@@ -293,7 +307,7 @@ public class Game extends Frame {
       // something like "brightness times radius squared."
       int brr = (int) ((1 - dd * dd) * 255);
 
-      int dist = 120;
+      int dist = VIEWPORT_WIDTH_HALF;
       if (brr < 0) {
         // Cut off the flashlight past a certain angle, but for better
         // playability leave a small halo going all the way around the player.
@@ -309,10 +323,10 @@ public class Game extends Frame {
         // Loop through the beam's pixels one fraction of the total distance
         // each iteration. This is very slightly inefficient because in some
         // cases we'll calculate the same pixel twice.
-        int xx = xt * j / 120 + 120;
-        int yy = yt * j / 120 + 120;
-        int xm = xx + camera.x - 120;
-        int ym = yy + camera.y - 120;
+        int xx = xt * j / VIEWPORT_WIDTH_HALF + VIEWPORT_WIDTH_HALF;
+        int yy = yt * j / VIEWPORT_HEIGHT_HALF + VIEWPORT_HEIGHT_HALF;
+        int xm = xx + camera.x - VIEWPORT_WIDTH_HALF;
+        int ym = yy + camera.y - VIEWPORT_HEIGHT_HALF;
 
         // Stop the light if it hits a wall.
         if (map.isWallSafe(xm, ym))
@@ -321,8 +335,8 @@ public class Game extends Frame {
         // Do an approximate distance calculation. I'm not sure why this
         // couldn't have been built into the brightness table, which would let
         // us easily index using j.
-        int xd = (xx - 120) * 256 / 120;
-        int yd = (yy - 120) * 256 / 120;
+        int xd = (xx - VIEWPORT_WIDTH_HALF) * 256 / VIEWPORT_WIDTH_HALF;
+        int yd = (yy - VIEWPORT_HEIGHT_HALF) * 256 / VIEWPORT_HEIGHT_HALF;
         int ddd = (xd * xd + yd * yd) / 256;
         int br = brightness[ddd] * brr / 255;
 
@@ -333,7 +347,7 @@ public class Game extends Frame {
         }
 
         // Fill in the lightmap entry.
-        lightmap[xx + yy * 240] = br;
+        lightmap[xx + yy * VIEWPORT_WIDTH] = br;
       }
     }
   }
@@ -480,8 +494,9 @@ public class Game extends Frame {
   private void drawMonster(int tick, int[] monsterData, double playerDir,
       Point camera, int monsterIndex, int xPos) {
     // Monster is active. Calculate position relative to player.
-    int xm = xPos - camera.x + 120;
-    int ym = monsterData[monsterIndex * 16 + MDO_Y] - camera.y + 120;
+    int xm = xPos - camera.x + VIEWPORT_WIDTH_HALF;
+    int ym = monsterData[monsterIndex * 16 + MDO_Y] - camera.y
+        + VIEWPORT_HEIGHT_HALF;
 
     // Get monster's direction. This is just for figuring out which sprite
     // to draw.
@@ -509,8 +524,9 @@ public class Game extends Frame {
     for (int y = ym - 6; y < ym + 6; y++) {
       for (int x = xm - 6; x < xm + 6; x++) {
         int c = sprites[p++];
-        if (c > 0 && x >= 0 && y >= 0 && x < 240 && y < 240) {
-          pixels[x + y * 240] = c;
+        if (c > 0 && x >= 0 && y >= 0 && x < VIEWPORT_WIDTH
+            && y < VIEWPORT_HEIGHT) {
+          pixels[x + y * VIEWPORT_WIDTH] = c;
         }
       }
     }
@@ -680,10 +696,10 @@ public class Game extends Frame {
     drawBulletTrace(lightmap, cos, sin, closestHitDistance);
 
     // Did the bullet hit within view?
-    if (closestHitDistance < 120) {
+    if (closestHitDistance < VIEWPORT_WIDTH_HALF) {
       closestHitDistance -= 3;
-      Point hitPoint = new Point((int) (120 + cos * closestHitDistance),
-          (int) (120 - sin * closestHitDistance));
+      Point hitPoint = new Point((int) (VIEWPORT_WIDTH_HALF + cos * closestHitDistance),
+          (int) (VIEWPORT_HEIGHT_HALF - sin * closestHitDistance));
 
       drawImpactFlash(lightmap, hitPoint);
       drawBulletDebris(playerDir, wasMonsterHit, hitPoint);
@@ -695,8 +711,8 @@ public class Game extends Frame {
     int glow = 0;
     for (int j = closestHitDist; j >= 0; j--) {
       // Calculate pixel position.
-      int xm = +(int) (cos * j) + 120;
-      int ym = -(int) (sin * j) + 120;
+      int xm = +(int) (cos * j) + VIEWPORT_WIDTH_HALF;
+      int ym = -(int) (sin * j) + VIEWPORT_HEIGHT_HALF;
 
       // Are we still within the view?
       if (isWithinView(xm, ym)) {
@@ -704,12 +720,13 @@ public class Game extends Frame {
         // Every so often, draw a white dot and renew the glow. This gives a
         // cool randomized effect that looks like spitting sparks.
         if (random.nextInt(20) == 0 || j == closestHitDist) {
-          pixels[xm + ym * 240] = 0xffffff;
+          pixels[xm + ym * VIEWPORT_WIDTH] = 0xffffff;
           glow = 200;
         }
 
         // Either way, brighten up the path according to the current glow.
-        lightmap[xm + ym * 240] += glow * (255 - lightmap[xm + ym * 240]) / 255;
+        lightmap[xm + ym * VIEWPORT_WIDTH] += glow
+            * (255 - lightmap[xm + ym * VIEWPORT_WIDTH]) / 255;
       }
 
       // Fade the glow.
@@ -726,13 +743,13 @@ public class Game extends Frame {
           + random.nextInt(4) - random.nextInt(4);
       int yd = (int) (hitPoint.y - Math.sin(playerDir + dir) * pow)
           + random.nextInt(4) - random.nextInt(4);
-      if (xd >= 0 && yd >= 0 && xd < 240 && yd < 240) {
+      if (xd >= 0 && yd >= 0 && xd < VIEWPORT_WIDTH && yd < VIEWPORT_HEIGHT) {
         if (hitMonster) {
           // Blood
-          pixels[xd + yd * 240] = 0xff0000;
+          pixels[xd + yd * VIEWPORT_WIDTH] = 0xff0000;
         } else {
           // Wall
-          pixels[xd + yd * 240] = 0xcacaca;
+          pixels[xd + yd * VIEWPORT_WIDTH] = 0xcacaca;
         }
       }
     }
@@ -742,18 +759,20 @@ public class Game extends Frame {
     for (int x = -12; x <= 12; x++) {
       for (int y = -12; y <= 12; y++) {
         Point offsetPoint = new Point(hitPoint.x + x, hitPoint.y + y);
-        if (offsetPoint.x >= 0 && offsetPoint.y >= 0 && offsetPoint.x < 240
-            && offsetPoint.y < 240) {
-          lightmap[offsetPoint.x + offsetPoint.y * 240] += 2000
+        if (offsetPoint.x >= 0 && offsetPoint.y >= 0
+            && offsetPoint.x < VIEWPORT_WIDTH
+            && offsetPoint.y < VIEWPORT_HEIGHT) {
+          lightmap[offsetPoint.x + offsetPoint.y * VIEWPORT_WIDTH] += 2000
               / (x * x + y * y + 10)
-              * (255 - lightmap[offsetPoint.x + offsetPoint.y * 240]) / 255;
+              * (255 - lightmap[offsetPoint.x + offsetPoint.y * VIEWPORT_WIDTH])
+              / 255;
         }
       }
     }
   }
 
   private boolean isWithinView(int xm, int ym) {
-    return xm > 0 && ym > 0 && xm < 240 && ym < 240;
+    return xm > 0 && ym > 0 && xm < VIEWPORT_WIDTH && ym < VIEWPORT_HEIGHT;
   }
 
   private void placeNewMonster(int[] monsterData, int m, int xPos, int yPos) {
@@ -827,36 +846,36 @@ public class Game extends Frame {
   }
 
   private void drawNoiseAndHUD(int[] lightmap) {
-    for (int y = 0; y < 240; y++) {
-      for (int x = 0; x < 240; x++) {
+    for (int y = 0; y < VIEWPORT_HEIGHT; y++) {
+      for (int x = 0; x < VIEWPORT_WIDTH; x++) {
         int noise = random.nextInt(16) * random.nextInt(16) / 16;
         if (!session.gameStarted)
           noise *= 4;
 
-        int c = pixels[x + y * 240];
-        int l = lightmap[x + y * 240];
-        lightmap[x + y * 240] = 0;
+        int c = pixels[x + y * VIEWPORT_WIDTH];
+        int l = lightmap[x + y * VIEWPORT_WIDTH];
+        lightmap[x + y * VIEWPORT_WIDTH] = 0;
         int r = ((c >> 16) & 0xff) * l / 255 + noise;
         int g = ((c >> 8) & 0xff) * l / 255 + noise;
         int b = ((c) & 0xff) * l / 255 + noise;
 
         r = r * (255 - session.hurtTime) / 255 + session.hurtTime;
         g = g * (255 - session.bonusTime) / 255 + session.bonusTime;
-        pixels[x + y * 240] = r << 16 | g << 8 | b;
+        pixels[x + y * VIEWPORT_WIDTH] = r << 16 | g << 8 | b;
       }
       if (y % 2 == 0 && (y >= session.damage && y < 220)) {
         for (int x = 232; x < 238; x++) {
-          pixels[y * 240 + x] = 0x800000;
+          pixels[y * VIEWPORT_WIDTH + x] = 0x800000;
         }
       }
       if (y % 2 == 0 && (y >= session.ammo && y < 220)) {
         for (int x = 224; x < 230; x++) {
-          pixels[y * 240 + x] = 0x808000;
+          pixels[y * VIEWPORT_WIDTH + x] = 0x808000;
         }
       }
       if (y % 10 < 9 && (y >= session.clips && y < 220)) {
         for (int x = 221; x < 222; x++) {
-          pixels[y * 240 + 221] = 0xffff00;
+          pixels[y * VIEWPORT_WIDTH + 221] = 0xffff00;
         }
       }
     }
@@ -1102,7 +1121,7 @@ public class Game extends Frame {
     case MouseEvent.MOUSE_MOVED:
     case MouseEvent.MOUSE_DRAGGED:
       userInput.mouseEvent = ((MouseEvent) e).getX() / 2
-          + ((MouseEvent) e).getY() / 2 * 240;
+          + ((MouseEvent) e).getY() / 2 * VIEWPORT_HEIGHT;
     }
   }
 }
