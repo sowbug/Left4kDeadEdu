@@ -16,6 +16,7 @@ class Game {
   int damage;
   int ammo;
   int clips;
+  int tick;
 
   public Game() {
   }
@@ -33,6 +34,7 @@ class Game {
 
   public void winLevel() {
     ++level;
+    tick = 0;
     System.out.println("Advancing to level " + level + "...");
   }
 

@@ -4,37 +4,43 @@ import java.awt.image.DataBufferInt;
 import java.util.Random;
 
 class Viewport {
-  // TODO kill
-  private static final int MDO_Y = 1;
-  private static final int MDO_DIRECTION = 2;
-  private static final int MDO_SPRITE_FRAME = 3;
+  private final int width;
+  private final int width_half;
+  private final int height;
+  private final int height_half;
 
-  private BufferedImage image;
-  private Graphics ogr;
-  private Graphics sg;
+  private final BufferedImage image;
+  private final Graphics ogr;
+  private final Graphics sg;
 
   private final int[] pixels;
-  private final int[] sprites;
-  private final Random random = new Random();
-
   private final int[] lightmap;
   private final int[] brightness;
-  private int width;
-  private int width_half;
-  private int height;
-  private int height_half;
+  private final int[] sprites;
 
-  Viewport(int width, int height, Graphics graphics) {
+  private final Random random = new Random();
+  private int screenWidth;
+  private int screenHeight;
+
+  Viewport(int width, int height, int screenWidth, int screenHeight,
+      Graphics graphics) {
     this.width = width;
     this.width_half = width / 2;
     this.height = height;
     this.height_half = height / 2;
+
+    this.screenWidth = screenWidth;
+    this.screenHeight = screenHeight;
+
     image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
     ogr = image.getGraphics();
     sg = graphics;
+
     pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
     lightmap = new int[width * height];
-    brightness = generateBrightness();
+
+    brightness = new int[512];
+    generateBrightness();
 
     sprites = new int[18 * 4 * 16 * 12 * 12];
     generateSprites();
@@ -109,19 +115,17 @@ class Viewport {
     }
   }
 
-  int[] generateBrightness() {
-    int[] brightness = new int[512];
-
+  private void generateBrightness() {
     double offs = 30;
     for (int i = 0; i < 512; i++) {
       brightness[i] = (int) (255.0 * offs / (i + offs));
       if (i < 4)
         brightness[i] = brightness[i] * i / 4;
     }
-    return brightness;
   }
 
-  void generateLightmap(Map map, int tick, double playerDir, Point camera) {
+  private void calculateLightmap(Map map, int tick, double playerDir,
+      Point camera) {
     for (int i = 0; i < width * 4; i++) {
       // Calculate a point along the outer wall of the view.
       int xt = i % width - width_half;
@@ -196,7 +200,7 @@ class Viewport {
     }
   }
 
-  void drawNoiseAndHUD(Game game) {
+  private void drawNoiseAndHUD(Game game) {
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
         int noise = random.nextInt(16) * random.nextInt(16) / 16;
@@ -297,37 +301,32 @@ class Viewport {
     }
   }
 
-  // TODO kill, dup
-  private boolean isPlayer(int monsterIndex) {
-    return monsterIndex == 0;
-  }
-
-  void drawMonster(int tick, int[] monsterData, double playerDir, Point camera,
-      int monsterIndex, int xPos) {
+  void drawMonster(int tick, Monster monster, double playerDir, Point camera,
+      int xPos) {
     // Monster is active. Calculate position relative to player.
     int xm = xPos - camera.x + width_half;
-    int ym = monsterData[monsterIndex * 16 + MDO_Y] - camera.y + height_half;
+    int ym = monster.position.y - camera.y + height_half;
 
     // Get monster's direction. This is just for figuring out which sprite
     // to draw.
-    int d = monsterData[monsterIndex * 16 + MDO_DIRECTION];
-    if (isPlayer(monsterIndex)) {
+    int d = monster.direction;
+    if (monster.isPlayer()) {
       // or if this is the player, convert radian direction.
       d = (((int) (playerDir / (Math.PI * 2) * 16 + 4.5 + 16)) & 15);
     }
 
-    d += ((monsterData[monsterIndex * 16 + MDO_SPRITE_FRAME] / 4) & 3) * 16;
+    d += ((monster.frame / 4) & 3) * 16;
 
     // If non-special monster, convert to actual sprite pixel offset.
     int p = (0 * 16 + d) * 144;
-    if (monsterIndex > 0) {
-      p += ((monsterIndex & 15) + 1) * 144 * 16 * 4;
+    if (!monster.isPlayer()) {
+      p += ((monster.index & 15) + 1) * 144 * 16 * 4;
     }
 
     // Special non-player monster: cycle through special sprite, either
     // red or yellow, spinning.
-    if (monsterIndex > 255) {
-      p = (17 * 4 * 16 + ((monsterIndex & 1) * 16 + (tick & 15))) * 144;
+    if (monster.isSpecial()) {
+      p = (17 * 4 * 16 + ((monster.index & 1) * 16 + (tick & 15))) * 144;
     }
 
     // Render the monster.
@@ -341,7 +340,7 @@ class Viewport {
     }
   }
 
-  void copyView(Map map, Point camera) {
+  private void copyView(Map map, Point camera) {
     for (int y = 0; y < height; y++) {
       int xm = camera.x - (width >> 1);
       int ym = y + camera.y - (height >> 1);
@@ -351,7 +350,7 @@ class Viewport {
     }
   }
 
-  void drawStatusText(int tick, Game game, UserInput userInput) {
+  private void drawStatusText(Game game, UserInput userInput) {
     ogr.drawString("" + game.score, 4, 232);
     if (!game.gameStarted) {
       ogr.drawString("Left 4k Dead", 80, 70);
@@ -359,14 +358,24 @@ class Viewport {
         game.markGameStarted();
         userInput.setTriggerPressed(false);
       }
-    } else if (tick < 60) {
+    } else if (game.tick < 60) {
       game.drawLevel(ogr);
     }
   }
 
-  void drawToScreen(int screen_width, int screen_height) {
+  private void drawToScreen(int screen_width, int screen_height) {
     sg.drawImage(image, 0, 0, screen_width, screen_height, 0, 0, width, height,
         null);
   }
 
+  void completeFrame(Game game, UserInput userInput) {
+    drawNoiseAndHUD(game);
+    drawStatusText(game, userInput);
+    drawToScreen(screenWidth, screenHeight);
+  }
+
+  void prepareFrame(Game game, Map map, Point camera, double playerDir) {
+    calculateLightmap(map, game.tick, playerDir, camera);
+    copyView(map, camera);
+  }
 }
