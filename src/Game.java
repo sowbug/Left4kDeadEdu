@@ -897,6 +897,9 @@ public class Game extends Frame {
 
     // Create 70 rooms. Put the player in the 69th, and make the 70th red.
     for (int i = 0; i < ROOM_COUNT; i++) {
+      boolean isStartRoom = i == ROOM_COUNT - 2;
+      boolean isEndRoom = i == ROOM_COUNT - 1;
+
       // Create a room that's possibly as big as the level, whose coordinates
       // are clamped to the nearest multiple of 16.
       int w = random.nextInt(8) + 2;
@@ -912,16 +915,15 @@ public class Game extends Frame {
       xm *= 16;
       ym *= 16;
 
-      // Place the player (monsterData[0-15]) in the center of the
-      // second-to-last room.
-      if (i == ROOM_COUNT - 2) {
+      if (isStartRoom) {
+        // Place the player (monsterData[0-15]) in the center of the start room.
         monsterData[MDO_X] = xm + w / 2;
         monsterData[MDO_Y] = ym + h / 2;
         monsterData[MDO_SAVED_MAP_PIXEL] = 0x808080;
         monsterData[MDO_ACTIVITY_LEVEL] = 1;
       }
 
-      if (i == ROOM_COUNT - 1) {
+      if (isEndRoom) {
         endRoomTopLeft.x = xm + 5;
         endRoomTopLeft.y = ym + 5;
         endRoomBottomRight.x = xm + w - 5;
@@ -960,7 +962,7 @@ public class Game extends Frame {
             map.setBorderWall(x, y);
           }
 
-          if (i == ROOM_COUNT - 1) {
+          if (isEndRoom) {
             map.maskEndRoom(x, y);
           }
         }
@@ -1012,9 +1014,7 @@ public class Game extends Frame {
   }
 
   /**
-   * Generate a bunch of top-down sprites using surprisingly compact code.
-   *
-   * @return
+   * Generates a bunch of top-down sprites using surprisingly compact code.
    */
   private int[] generateSprites() {
     final int PIXEL_ZOMBIE_SKIN = 0xa0ff90;
