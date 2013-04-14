@@ -85,7 +85,7 @@ public class Left4kDead extends Frame {
       Point endRoomBottomRight = new Point(0, 0);
 
       // Make the levels random but repeatable.
-      random = new Random(4329 + game.level);
+      random = game.randomForLevel();
 
       map = new Map(1024, 1024);
 
@@ -98,9 +98,7 @@ public class Left4kDead extends Frame {
       }
 
       // Place the player (monsterData[0-15]) in the center of the start room.
-      monsters[0].position = startPoint;
-      monsters[0].savedMapPixel = 0x808080;
-      monsters[0].activity = 1;
+      monsters[0].setAsPlayer(startPoint);
 
       long lastTime = System.nanoTime();
 
@@ -110,8 +108,8 @@ public class Left4kDead extends Frame {
       double playerDir = 0;
 
       while (true) {
-        if (game.gameStarted) {
-          game.tick++;
+        if (game.isStarted()) {
+          game.advanceTick();
           game.advanceRushTime(random);
 
           int mouse = userInput.mouseEvent;
@@ -128,27 +126,27 @@ public class Left4kDead extends Frame {
           viewport.prepareFrame(game, map, camera, playerDir);
 
           resetClosestHitDistance(cos, sin, camera);
-          processMonsters(viewport, game.tick, monsters, playerDir, cos, sin,
-              camera);
+          processMonsters(viewport, game.getTick(), monsters, playerDir, cos,
+              sin, camera);
 
           if (didPlayerPressFire()) {
             boolean wasMonsterHit = closestHit > 0;
-            doShot(viewport, wasMonsterHit, playerDir, cos, sin);
+            closestHitDistance = viewport.handleShot(game, userInput,
+                wasMonsterHit, playerDir, cos, sin, closestHitDistance);
             if (wasMonsterHit) {
-              monsters[closestHit].damage = 1;
-              monsters[closestHit].rage = 127;
+              monsters[closestHit].markDamaged();
+              monsters[closestHit].markEnraged();
             }
           }
 
-          if (game.damage >= 220) {
+          if (game.getDamage() >= 220) {
             userInput.setTriggerPressed(false);
-            game.hurtTime = 255;
+            game.setMaxHurt();
             return;
           }
-          if (userInput.isReloadPressed() && game.ammo > 20 && game.clips < 220) {
-            game.shootDelay = 30;
-            game.ammo = 20;
-            game.clips += 10;
+          if (userInput.isReloadPressed() && !game.isAmmoFull()
+              && game.getClips() < 220) {
+            game.reloadGun();
           }
 
           if (isPlayerInEndRoom(endRoomTopLeft, endRoomBottomRight, camera)) {
@@ -157,8 +155,8 @@ public class Left4kDead extends Frame {
           }
         }
 
-        game.bonusTime = game.bonusTime * 8 / 9;
-        game.hurtTime /= 2;
+        game.decayBonusTime();
+        game.decayHurt();
 
         viewport.completeFrame(game, userInput);
 
@@ -201,7 +199,7 @@ public class Left4kDead extends Frame {
   }
 
   private boolean didPlayerPressFire() {
-    return game.shootDelay-- < 0 && userInput.isTriggerPressed();
+    return game.advanceShotTimer() && userInput.isTriggerPressed();
   }
 
   private void updateClosestHit(int index, int distance) {
@@ -237,8 +235,10 @@ public class Left4kDead extends Frame {
       // It's rush time, OR c. It's the first tick of the game and it's one
       // of the last 16 monsters.
       if (!map.isMonsterHead(xPos, yPos)
-          && (monster.isEarly() || game.rushTime > 0 || (monster.isSpecial() && tick == 1))) {
-        monster.place(xPos, yPos, game.rushTime, map.getElement(xPos, yPos));
+          && (monster.isEarly() || game.getRushTime() > 0 || (monster
+              .isSpecial() && tick == 1))) {
+        monster.place(xPos, yPos, game.getRushTime(),
+            map.getElement(xPos, yPos));
         // Mark the map as having a monster here.
         map.setMonsterHead(xPos, yPos);
       } else {
@@ -270,7 +270,7 @@ public class Left4kDead extends Frame {
     boolean moved = false;
 
     if (monster.hasTakenDamage()) {
-      processMonsterDamage(monster, playerDir, xPos, yPos);
+      monster.processDamage(map, game, playerDir, xPos, yPos);
       return;
     }
 
@@ -283,21 +283,22 @@ public class Left4kDead extends Frame {
 
       // Is this monster near the player?
       if (monster.isMouthTouchingPlayer(rx, ry)) {
-        inflictNibbleDamage();
+        game.inflictNibbleDamage();
       }
 
-      if (canMonsterSeePlayer(rx, ry) && random.nextInt(10) == 0) {
+      if (monster.canSeePlayer(rx, ry) && random.nextInt(10) == 0) {
         monster.agitate();
       }
 
       // Mark which monster so far is closest to the player.
       if (rx > 0 && ry > -8 && ry < 8) {
-        updateClosestHit(monster.index, (int) rx);
+        updateClosestHit(monster.getIndex(), (int) rx);
       }
 
       for (int i = 0; i < 2; i++) {
         Boolean shouldSkip = new Boolean(false);
-        moved = doDirLoop(monster, moved, i, shouldSkip, distanceToPlayer);
+        moved = doOneMovementIteration(monster, moved, i, shouldSkip,
+            distanceToPlayer);
         if (shouldSkip)
           return;
       }
@@ -305,15 +306,6 @@ public class Left4kDead extends Frame {
         monster.advanceSpriteFrame();
       }
     }
-  }
-
-  private boolean canMonsterSeePlayer(double rx, double ry) {
-    return rx > -32 && rx < 220 && ry > -32 && ry < 32;
-  }
-
-  private void inflictNibbleDamage() {
-    game.damage++;
-    game.hurtTime += 20;
   }
 
   private boolean isTooCloseToSpawn(Point distance) {
@@ -331,44 +323,37 @@ public class Left4kDead extends Frame {
   private void killMonster(Monster monster) {
     // Replace the map pixel.
     map.setElement(monster.position.x, monster.position.y,
-        monster.savedMapPixel);
+        monster.getSavedMapPixel());
 
     // Mark monster inactive.
     monster.markInactive();
 
     if (monster.isSpecial()) {
-      game.bonusTime = 120;
+      game.resetBonusTime();
 
       // 50-50 chance of resetting damage or giving ammo.
-      if ((monster.index & 1) == 0) {
-        game.damage = 20;
+      if ((monster.getIndex() & 1) == 0) {
+        game.resetDamage();
       } else {
-        game.clips = 20;
+        game.resetClips();
       }
     }
   }
 
-  private boolean doDirLoop(Monster monster, boolean moved, int i,
-      Boolean shouldSkip, Point distanceToPlayer) {
+  private boolean doOneMovementIteration(Monster monster, boolean moved,
+      int iteration, Boolean shouldSkip, Point distanceToPlayer) {
     Point movement = new Point(0, 0);
 
     if (monster.isPlayer()) {
       userInput.handleKeyboardInput(movement);
     } else {
       // Not agitated enough. Don't do anything.
-      if (monster.rage < 8) {
+      if (!monster.isSomewhatEnraged()) {
         shouldSkip = true;
         return false;
       }
 
-      // Unsure. Seems to be some kind of wandering algorithm.
-      if (monster.wanderDirection != 12) {
-        distanceToPlayer.x = (monster.wanderDirection) % 5 - 2;
-        distanceToPlayer.y = (monster.wanderDirection) / 5 - 2;
-        if (random.nextInt(10) == 0) {
-          monster.wanderDirection = 12;
-        }
-      }
+      monster.wanderToward(distanceToPlayer);
 
       // Move generally toward the player.
       double xxd = Math.sqrt(distanceToPlayer.x * distanceToPlayer.x);
@@ -391,19 +376,19 @@ public class Left4kDead extends Frame {
 
       // Pick the right sprite frame depending on direction.
       double dir = Math.atan2(distanceToPlayer.y, distanceToPlayer.x);
-      monster.direction = (((int) (dir / (Math.PI * 2) * 16 + 4.5 + 16)) & 15);
+      monster.setDirection((((int) (dir / (Math.PI * 2) * 16 + 4.5 + 16)) & 15));
     }
 
     // I think this is a way to move fast but not go through walls.
     // Start by moving a small amount, test for wall hit, if successful
     // try moving more.
-    movement.y *= i;
-    movement.x *= 1 - i;
+    movement.y *= iteration;
+    movement.x *= 1 - iteration;
 
     if (didMove(movement)) {
       // Restore the map pixel during collision detection.
       map.setElement(monster.position.x, monster.position.y,
-          monster.savedMapPixel);
+          monster.getSavedMapPixel());
 
       // Did the monster bonk into a wall?
       for (int xx = monster.position.x + movement.x - 3; xx <= monster.position.x
@@ -414,7 +399,7 @@ public class Left4kDead extends Frame {
             // Yes. We're not moving. Put back our pixel.
             map.setMonsterHead(monster.position.x, monster.position.y);
             // Try wandering in a different direction.
-            monster.wanderDirection = random.nextInt(25);
+            monster.pickWanderDirection();
             return moved;
           }
         }
@@ -430,82 +415,6 @@ public class Left4kDead extends Frame {
 
   private boolean didMove(Point movement) {
     return movement.x != 0 || movement.y != 0;
-  }
-
-  private void doShot(Viewport viewport, boolean wasMonsterHit,
-      double playerDir, double cos, double sin) {
-    // Is the ammo used up?
-    if (game.ammo >= 220) {
-      // Yes. Longer delay.
-      game.shootDelay = 2;
-      // Require trigger release.
-      userInput.setTriggerPressed(false);
-    } else {
-      // Fast fire.
-      game.shootDelay = 1;
-      // Use up bullets.
-      game.ammo += 4;
-    }
-
-    viewport.drawBulletTrace(cos, sin, closestHitDistance);
-
-    // Did the bullet hit within view?
-    if (closestHitDistance < VIEWPORT_WIDTH_HALF) {
-      closestHitDistance -= 3;
-      Point hitPoint = new Point((int) (VIEWPORT_WIDTH_HALF + cos
-          * closestHitDistance), (int) (VIEWPORT_HEIGHT_HALF - sin
-          * closestHitDistance));
-
-      viewport.drawImpactFlash(hitPoint);
-      viewport.drawBulletDebris(playerDir, wasMonsterHit, hitPoint);
-    }
-  }
-
-  private void processMonsterDamage(Monster monster, double playerDir,
-      int xPos, int yPos) {
-    // Add to monster's cumulative damage and reset temp damage.
-    monster.activity += random.nextInt(3) + 1;
-    monster.damage = 0;
-
-    double rot = 0.25; // How far around the blood spreads, radians
-    int amount = 8; // How much blood
-    double poww = 32; // How far to spread the blood
-
-    // Is this monster sufficiently messed up to die?
-    if (monster.activity >= 2 + game.level) {
-      rot = Math.PI * 2; // All the way around
-      amount = 60; // lots of blood
-      poww = 16;
-      map.setElement(xPos, yPos, 0xa00000); // Red
-      monster.activity = 0; // Kill monster
-      game.addScoreForMonsterDeath();
-    }
-
-    // Draw blood.
-    for (int i = 0; i < amount; i++) {
-      double pow = (random.nextInt(100) * random.nextInt(100)) * poww / 10000
-          + 4;
-      double dir = (random.nextInt(100) - random.nextInt(100)) / 100.0 * rot;
-      double xdd = (Math.cos(playerDir + dir) * pow) + random.nextInt(4)
-          - random.nextInt(4);
-      double ydd = (Math.sin(playerDir + dir) * pow) + random.nextInt(4)
-          - random.nextInt(4);
-      int col = (random.nextInt(128) + 120);
-      bloodLoop: for (int j = 2; j < pow; j++) {
-        int xd = (int) (xPos + xdd * j / pow);
-        int yd = (int) (yPos + ydd * j / pow);
-
-        // If the blood encounters a wall, stop spraying.
-        if (map.isAnyWallSafe(xd, yd))
-          break bloodLoop;
-
-        // Occasionally splat some blood and darken it.
-        if (random.nextInt(2) != 0) {
-          map.setElementSafe(xd, yd, col << 16);
-          col = col * 8 / 9;
-        }
-      }
-    }
   }
 
   /**

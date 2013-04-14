@@ -204,7 +204,7 @@ class Viewport {
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
         int noise = random.nextInt(16) * random.nextInt(16) / 16;
-        if (!game.gameStarted)
+        if (!game.isStarted())
           noise *= 4;
 
         int c = pixels[x + y * width];
@@ -214,21 +214,21 @@ class Viewport {
         int g = ((c >> 8) & 0xff) * l / 255 + noise;
         int b = ((c) & 0xff) * l / 255 + noise;
 
-        r = r * (255 - game.hurtTime) / 255 + game.hurtTime;
-        g = g * (255 - game.bonusTime) / 255 + game.bonusTime;
+        r = r * (255 - game.getHurtTime()) / 255 + game.getHurtTime();
+        g = g * (255 - game.getBonusTime()) / 255 + game.getBonusTime();
         pixels[x + y * width] = r << 16 | g << 8 | b;
       }
-      if (y % 2 == 0 && (y >= game.damage && y < 220)) {
+      if (y % 2 == 0 && (y >= game.getDamage() && y < 220)) {
         for (int x = 232; x < 238; x++) {
           pixels[y * width + x] = 0x800000;
         }
       }
-      if (y % 2 == 0 && (y >= game.ammo && y < 220)) {
+      if (y % 2 == 0 && (y >= game.getAmmo() && y < 220)) {
         for (int x = 224; x < 230; x++) {
           pixels[y * width + x] = 0x808000;
         }
       }
-      if (y % 10 < 9 && (y >= game.clips && y < 220)) {
+      if (y % 10 < 9 && (y >= game.getClips() && y < 220)) {
         for (int x = 221; x < 222; x++) {
           pixels[y * width + 221] = 0xffff00;
         }
@@ -309,24 +309,24 @@ class Viewport {
 
     // Get monster's direction. This is just for figuring out which sprite
     // to draw.
-    int d = monster.direction;
+    int d = monster.getDirection();
     if (monster.isPlayer()) {
       // or if this is the player, convert radian direction.
       d = (((int) (playerDir / (Math.PI * 2) * 16 + 4.5 + 16)) & 15);
     }
 
-    d += ((monster.frame / 4) & 3) * 16;
+    d += ((monster.getFrame() / 4) & 3) * 16;
 
     // If non-special monster, convert to actual sprite pixel offset.
     int p = (0 * 16 + d) * 144;
     if (!monster.isPlayer()) {
-      p += ((monster.index & 15) + 1) * 144 * 16 * 4;
+      p += ((monster.getIndex() & 15) + 1) * 144 * 16 * 4;
     }
 
     // Special non-player monster: cycle through special sprite, either
     // red or yellow, spinning.
     if (monster.isSpecial()) {
-      p = (17 * 4 * 16 + ((monster.index & 1) * 16 + (tick & 15))) * 144;
+      p = (17 * 4 * 16 + ((monster.getIndex() & 1) * 16 + (tick & 15))) * 144;
     }
 
     // Render the monster.
@@ -351,14 +351,14 @@ class Viewport {
   }
 
   private void drawStatusText(Game game, UserInput userInput) {
-    ogr.drawString("" + game.score, 4, 232);
-    if (!game.gameStarted) {
+    ogr.drawString("" + game.getScore(), 4, 232);
+    if (!game.isStarted()) {
       ogr.drawString("Left 4k Dead", 80, 70);
-      if (userInput.isTriggerPressed() && game.hurtTime == 0) {
+      if (userInput.isTriggerPressed() && game.getHurtTime() == 0) {
         game.markGameStarted();
         userInput.setTriggerPressed(false);
       }
-    } else if (game.tick < 60) {
+    } else if (game.getTick() < 60) {
       game.drawLevel(ogr);
     }
   }
@@ -375,7 +375,38 @@ class Viewport {
   }
 
   void prepareFrame(Game game, Map map, Point camera, double playerDir) {
-    calculateLightmap(map, game.tick, playerDir, camera);
+    calculateLightmap(map, game.getTick(), playerDir, camera);
     copyView(map, camera);
   }
+
+  int handleShot(Game game, UserInput userInput, boolean wasMonsterHit,
+      double playerDir, double cos, double sin, int closestHitDistance) {
+    // Is the ammo used up?
+    if (!game.isAmmoAvailable()) {
+      // Yes.
+      game.setLongShootDelay();
+      // Require trigger release.
+      userInput.setTriggerPressed(false);
+    } else {
+      // No.
+      game.setShortShootDelay();
+      // Use up bullets.
+      game.consumeAmmo(4);
+    }
+
+    drawBulletTrace(cos, sin, closestHitDistance);
+
+    // Did the bullet hit within view?
+    if (closestHitDistance < width_half) {
+      closestHitDistance -= 3;
+      Point hitPoint = new Point((int) (width_half + cos * closestHitDistance),
+          (int) (height_half - sin * closestHitDistance));
+
+      drawImpactFlash(hitPoint);
+      drawBulletDebris(playerDir, wasMonsterHit, hitPoint);
+    }
+
+    return closestHitDistance;
+  }
+
 }
