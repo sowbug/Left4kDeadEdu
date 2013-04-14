@@ -17,9 +17,6 @@ class Game {
   private int clips;
   private int tick;
 
-  Game() {
-  }
-
   void addScoreForMonsterDeath() {
     score += level;
   }
