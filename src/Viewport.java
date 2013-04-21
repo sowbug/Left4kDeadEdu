@@ -103,6 +103,13 @@ class Viewport {
                 }
               }
               sprites[pix++] = col;
+
+              // If we just drew a pixel, make the next one an almost-black
+              // pixel, and if it's already an almost-black one, make it
+              // transparent (full black). (This is all honored only if the
+              // next pixel isn't actually set to something else.) This takes
+              // advantage of the left-to-right scanning of the sprite
+              // generation to create a slight shadow effect on each sprite.
               if (col > 1) {
                 col = 1;
               } else {
